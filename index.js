@@ -1,5 +1,7 @@
 const express = require("express");
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 const WorkerPool = require("./WorkerPool");
 
@@ -17,6 +19,26 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 const activeJobs = new Map();
+
+const PROMPTS_FILE = path.join(__dirname, "default-prompts.json");
+
+function loadDefaultPrompts() {
+  try {
+    if (fs.existsSync(PROMPTS_FILE)) {
+      return new Map(Object.entries(JSON.parse(fs.readFileSync(PROMPTS_FILE, "utf8"))));
+    }
+  } catch (e) {
+    console.error("Failed to load default prompts:", e.message);
+  }
+  return new Map();
+}
+
+function saveDefaultPrompts(map) {
+  const obj = Object.fromEntries(map);
+  fs.writeFileSync(PROMPTS_FILE, JSON.stringify(obj, null, 2));
+}
+
+const defaultPrompts = loadDefaultPrompts();
 
 app.get("/", (req, res) => {
   res.send("hello world");
@@ -97,17 +119,49 @@ app.post("/telegram", async (req, res) => {
   const text = message.text || "";
   const caption = message.caption || "";
 
+  if (text.startsWith("/set-image-prompt")) {
+    const prompt = text.slice("/set-image-prompt".length).trim();
+    if (!prompt) {
+      await sendMessage(chatId, "Usage: /set-image-prompt <prompt>\nSets the default prompt used when /image is sent without one.");
+      return;
+    }
+    const entry = defaultPrompts.get(chatId) || {};
+    entry.image = prompt;
+    defaultPrompts.set(chatId, entry);
+    saveDefaultPrompts(defaultPrompts);
+    await sendMessage(chatId, `✅ Default image prompt set to:\n"${prompt}"`);
+    return;
+  }
+
+  if (text.startsWith("/set-video-prompt")) {
+    const prompt = text.slice("/set-video-prompt".length).trim();
+    if (!prompt) {
+      await sendMessage(chatId, "Usage: /set-video-prompt <prompt>\nSets the default prompt used when /video is sent without one.");
+      return;
+    }
+    const entry = defaultPrompts.get(chatId) || {};
+    entry.video = prompt;
+    defaultPrompts.set(chatId, entry);
+    saveDefaultPrompts(defaultPrompts);
+    await sendMessage(chatId, `✅ Default video prompt set to:\n"${prompt}"`);
+    return;
+  }
+
   if (text.startsWith("/image") || caption.startsWith("/image")) {
     const prompt = text.startsWith("/image")
       ? text.slice("/image".length).trim()
       : caption.slice("/image".length).trim();
 
     if (!prompt) {
-      await sendMessage(
-        chatId,
-        "Usage: /image <prompt>\nOr reply to a photo with /image <prompt>",
-      );
-      return;
+      const defaultImagePrompt = defaultPrompts.get(chatId)?.image;
+      if (!defaultImagePrompt) {
+        await sendMessage(
+          chatId,
+          "Usage: /image <prompt>\nOr set a default: /set-image-prompt <prompt>",
+        );
+        return;
+      }
+      prompt = defaultImagePrompt;
     }
 
     try {
@@ -167,11 +221,15 @@ app.post("/telegram", async (req, res) => {
       ? text.slice("/video".length).trim()
       : caption.slice("/video".length).trim();
     if (!prompt) {
-      await sendMessage(
-        chatId,
-        "Usage: /video <prompt>\nOr reply to a photo with /video <prompt>",
-      );
-      return;
+      const defaultVideoPrompt = defaultPrompts.get(chatId)?.video;
+      if (!defaultVideoPrompt) {
+        await sendMessage(
+          chatId,
+          "Usage: /video <prompt>\nOr set a default: /set-video-prompt <prompt>",
+        );
+        return;
+      }
+      prompt = defaultVideoPrompt;
     }
 
     try {

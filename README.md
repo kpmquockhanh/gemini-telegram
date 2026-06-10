@@ -29,7 +29,13 @@ PORT=3000
 WORKER_POOL_SIZE=4
 ```
 
-3. Set up a Telegram bot webhook pointing to `https://<your-domain>/telegram`.
+3. Set the Telegram webhook. Make sure the server is running first, then call:
+
+```bash
+curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://<your-domain>/telegram"
+```
+
+Replace `<BOT_TOKEN>` with your actual token and `<your-domain>` with your deployed server URL. The endpoint must be HTTPS and publicly accessible (use ngrok for local testing).
 
 4. Start the server:
 

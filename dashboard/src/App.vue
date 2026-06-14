@@ -13,14 +13,19 @@ import AppLayout from '@/components/AppLayout.vue'
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
+/* ── Force light color scheme ── */
+html, body {
+  color-scheme: light !important;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #F8FAFC;
-  color: #0F172A;
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
 }
 
 /* ── Scrollbar ── */
@@ -45,6 +50,20 @@ body {
     border-color 0.2s ease;
 }
 
+/* ── Layout ── */
+.ant-layout {
+  background: #F8FAFC !important;
+}
+.ant-layout-sider {
+  background: #FFFFFF !important;
+}
+.ant-layout-header {
+  background: #FFFFFF !important;
+}
+.ant-layout-content {
+  background: #F8FAFC !important;
+}
+
 /* ── Table ── */
 .ant-table {
   border-radius: 14px !important;
@@ -66,6 +85,7 @@ body {
 .ant-table-tbody > tr > td {
   border-bottom: 1px solid #E2E8F0 !important;
   color: #0F172A !important;
+  background: #FFFFFF !important;
 }
 
 /* ── Card ── */
@@ -95,6 +115,9 @@ body {
 .ant-modal-footer {
   border-top: 1px solid #E2E8F0 !important;
 }
+.ant-modal-body {
+  background: #FFFFFF !important;
+}
 
 /* ── Button ── */
 .ant-btn {
@@ -109,6 +132,14 @@ body {
 .ant-btn-primary:hover {
   background: #00F5B8 !important;
   border-color: #00F5B8 !important;
+}
+.ant-btn-default {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+.ant-btn-text {
+  color: #64748B !important;
 }
 
 /* ── Input ── */
@@ -135,12 +166,17 @@ body {
   margin: 4px 8px !important;
   color: #64748B !important;
 }
+.ant-menu-item-selected {
+  background: #F1F5F9 !important;
+  color: #00D9A5 !important;
+}
 
 /* ── Select dropdown ── */
 .ant-select-dropdown {
   background: #FFFFFF !important;
   border: 1px solid #E2E8F0 !important;
   border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 .ant-select-item {
   color: #0F172A !important;
@@ -170,6 +206,59 @@ body {
 }
 .ant-input-textarea-show-count {
   color: #94A3B8 !important;
+}
+
+/* ── Pagination ── */
+.ant-pagination-item {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+.ant-pagination-item-active {
+  border-color: #00D9A5 !important;
+  color: #00D9A5 !important;
+}
+
+/* ── Drawer ── */
+.ant-drawer-body {
+  background: #FFFFFF !important;
+}
+.ant-drawer-header {
+  background: #FFFFFF !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+
+/* ── Dropdown ── */
+.ant-dropdown-menu {
+  background: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+.ant-dropdown-menu-item {
+  color: #0F172A !important;
+}
+.ant-dropdown-menu-item:hover {
+  background: #F1F5F9 !important;
+}
+
+/* ── Tag ── */
+.ant-tag {
+  border-radius: 6px !important;
+}
+
+/* ── Switch ── */
+.ant-switch-checked {
+  background: #00D9A5 !important;
+}
+
+/* ── Tabs ── */
+.ant-tabs-tab {
+  color: #64748B !important;
+}
+.ant-tabs-tab-active {
+  color: #00D9A5 !important;
+}
+.ant-tabs-ink-bar {
+  background: #00D9A5 !important;
 }
 
 /* ── Signature: holographic border animation ── */

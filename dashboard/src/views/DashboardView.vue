@@ -6,8 +6,7 @@ import { ref } from 'vue'
 import type { Stats } from '@/types'
 import {
   RobotOutlined,
-  PictureOutlined,
-  VideoCameraOutlined,
+  FileTextOutlined,
   MessageOutlined,
   ArrowUpOutlined,
 } from '@ant-design/icons-vue'
@@ -15,8 +14,7 @@ import {
 const promptsStore = usePromptsStore()
 const stats = ref<Stats>({
   totalChats: 0,
-  imageCount: 0,
-  videoCount: 0,
+  templateCount: 0,
   totalPrompts: 0,
 })
 const statsLoading = ref(false)
@@ -46,21 +44,14 @@ const statCards = [
     glow: 'rgba(0, 217, 165, 0.15)',
   },
   {
-    title: 'Image Prompts',
-    key: 'imageCount' as keyof Stats,
-    icon: PictureOutlined,
+    title: 'With Templates',
+    key: 'templateCount' as keyof Stats,
+    icon: FileTextOutlined,
     accent: '#60A5FA',
     glow: 'rgba(96, 165, 250, 0.15)',
   },
   {
-    title: 'Video Prompts',
-    key: 'videoCount' as keyof Stats,
-    icon: VideoCameraOutlined,
-    accent: '#F59E0B',
-    glow: 'rgba(245, 158, 11, 0.15)',
-  },
-  {
-    title: 'Total Prompts',
+    title: 'Active Prompts',
     key: 'totalPrompts' as keyof Stats,
     icon: MessageOutlined,
     accent: '#A78BFA',
@@ -82,7 +73,7 @@ const statCards = [
         :key="card.key"
         :xs="24"
         :sm="12"
-        :lg="6"
+        :lg="8"
       >
         <div class="artifact-card" :style="{ '--accent': card.accent, '--glow': card.glow }">
           <div class="artifact-border"></div>
@@ -118,8 +109,7 @@ const statCards = [
     <a-table
       :columns="[
         { title: 'Chat ID', dataIndex: 'chatId', key: 'chatId', width: 100 },
-        { title: 'Image Prompt', dataIndex: 'imagePrompt', key: 'imagePrompt', ellipsis: true },
-        { title: 'Video Prompt', dataIndex: 'videoPrompt', key: 'videoPrompt', ellipsis: true },
+        { title: 'Template', dataIndex: 'templateName', key: 'templateName', ellipsis: true },
         { title: 'Provider', dataIndex: 'provider', key: 'provider', width: 100 },
         { title: 'Model', dataIndex: 'modelName', key: 'modelName', width: 160 },
         { title: 'Updated', dataIndex: 'updatedAt', key: 'updatedAt', width: 180 },

@@ -1,7 +1,7 @@
 export interface Prompt {
   chatId: number
-  imagePrompt: string
-  videoPrompt: string
+  templateId: number | null
+  templateName: string
   provider: string
   modelName: string
   updatedAt: string
@@ -15,8 +15,7 @@ export interface PromptListResponse {
 }
 
 export interface PromptFormData {
-  imagePrompt: string
-  videoPrompt: string
+  templateId: number | null
   provider: string
   modelName: string
 }
@@ -49,7 +48,6 @@ export interface ProvidersResponse {
 
 export interface Stats {
   totalChats: number
-  imageCount: number
-  videoCount: number
+  templateCount: number
   totalPrompts: number
 }

@@ -14,11 +14,12 @@ type PromptStore struct {
 	db *sql.DB
 }
 
-// PromptEntry holds the default prompts for a single chat.
+// PromptEntry holds the default prompt settings for a single chat.
+// Prompts are resolved through the template_id.
 type PromptEntry struct {
 	ChatID       int64  `json:"chatId"`
-	ImagePrompt  string `json:"imagePrompt"`
-	VideoPrompt  string `json:"videoPrompt"`
+	TemplateID   *int64 `json:"templateId"`
+	TemplateName string `json:"templateName"`
 	Provider     string `json:"provider"`
 	ModelName    string `json:"modelName"`
 	UpdatedAt    string `json:"updatedAt"`
@@ -61,16 +62,17 @@ func NewPromptStore(dbPath string) (*PromptStore, error) {
 	return store, nil
 }
 
-// 	migrate creates the required tables.
+// migrate creates the required tables and runs migrations.
 func (s *PromptStore) migrate() error {
+	// Create tables with new schema
 	schema := `
 CREATE TABLE IF NOT EXISTS default_prompts (
     chat_id INTEGER PRIMARY KEY,
-    image_prompt TEXT,
-    video_prompt TEXT,
+    template_id INTEGER,
     provider TEXT,
     model_name TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (template_id) REFERENCES prompt_templates(id)
 );
 CREATE TABLE IF NOT EXISTS prompt_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,22 +88,118 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
 		return err
 	}
 
-	// Migrate: add provider and model_name columns if they don't exist.
+	// Migrate old schema: add columns that might not exist
+	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN template_id INTEGER`)
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN provider TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN model_name TEXT`)
+
+	// Migrate old columns to new template-based system
+	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN image_prompt TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN video_prompt TEXT`)
+
+	// Run data migration: convert existing prompts to templates
+	if err := s.migrateOldPrompts(); err != nil {
+		return fmt.Errorf("migrating old prompts: %w", err)
+	}
 
 	return nil
 }
 
-// GetPrompts retrieves the default prompts for a chat.
+// migrateOldPrompts converts old image_prompt/video_prompt fields into templates.
+func (s *PromptStore) migrateOldPrompts() error {
+	// Check if there are old-style prompts with image_prompt or video_prompt but no template_id
+	rows, err := s.db.Query(`
+		SELECT chat_id, image_prompt, video_prompt, provider, model_name 
+		FROM default_prompts 
+		WHERE (image_prompt IS NOT NULL OR video_prompt IS NOT NULL) 
+		AND template_id IS NULL
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var chatID int64
+		var imagePrompt, videoPrompt, provider, modelName sql.NullString
+		if err := rows.Scan(&chatID, &imagePrompt, &videoPrompt, &provider, &modelName); err != nil {
+			continue
+		}
+
+		// Create a template from the old prompts
+		name := fmt.Sprintf("Auto-migrated (Chat %d)", chatID)
+		res, err := s.db.Exec(`
+			INSERT INTO prompt_templates (name, description, image_prompt, video_prompt)
+			VALUES (?, ?, ?, ?)
+		`, name, "Auto-migrated from old prompt system", imagePrompt.String, videoPrompt.String)
+		if err != nil {
+			continue
+		}
+
+		templateID, err := res.LastInsertId()
+		if err != nil {
+			continue
+		}
+
+		// Update the chat to reference the new template
+		_, _ = s.db.Exec(`
+			UPDATE default_prompts 
+			SET template_id = ?, provider = ?, model_name = ?
+			WHERE chat_id = ?
+		`, templateID, provider.String, modelName.String, chatID)
+	}
+
+	// Drop old columns after migration (sqlite doesn't support DROP COLUMN easily, so we just ignore them)
+	// We keep them but don't use them in the new code.
+	return nil
+}
+
+// GetPrompts retrieves the prompt settings for a chat (with resolved template name).
 func (s *PromptStore) GetPrompts(chatID int64) (*PromptEntry, error) {
-	row := s.db.QueryRow(
-		`SELECT chat_id, image_prompt, video_prompt, provider, model_name, updated_at FROM default_prompts WHERE chat_id = ?`,
-		chatID,
-	)
+	row := s.db.QueryRow(`
+		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.updated_at
+		FROM default_prompts d
+		LEFT JOIN prompt_templates t ON d.template_id = t.id
+		WHERE d.chat_id = ?
+	`, chatID)
 
 	var entry PromptEntry
-	err := row.Scan(&entry.ChatID, &entry.ImagePrompt, &entry.VideoPrompt, &entry.Provider, &entry.ModelName, &entry.UpdatedAt)
+	var templateID sql.NullInt64
+	var templateName sql.NullString
+	var provider sql.NullString
+	var modelName sql.NullString
+	err := row.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &entry.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if templateID.Valid {
+		id := templateID.Int64
+		entry.TemplateID = &id
+		entry.TemplateName = templateName.String
+	}
+	if provider.Valid {
+		entry.Provider = provider.String
+	}
+	if modelName.Valid {
+		entry.ModelName = modelName.String
+	}
+	return &entry, nil
+}
+
+// GetChatTemplate retrieves the template assigned to a chat.
+func (s *PromptStore) GetChatTemplate(chatID int64) (*TemplateEntry, error) {
+	row := s.db.QueryRow(`
+		SELECT t.id, t.name, t.description, t.image_prompt, t.video_prompt, t.created_at
+		FROM prompt_templates t
+		JOIN default_prompts d ON t.id = d.template_id
+		WHERE d.chat_id = ?
+	`, chatID)
+
+	var entry TemplateEntry
+	err := row.Scan(&entry.ID, &entry.Name, &entry.Description, &entry.ImagePrompt, &entry.VideoPrompt, &entry.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -111,15 +209,15 @@ func (s *PromptStore) GetPrompts(chatID int64) (*PromptEntry, error) {
 	return &entry, nil
 }
 
-// SetImagePrompt sets the default image prompt for a chat.
-func (s *PromptStore) SetImagePrompt(chatID int64, prompt string) error {
+// SetTemplate assigns a template to a chat.
+func (s *PromptStore) SetTemplate(chatID int64, templateID int64) error {
 	_, err := s.db.Exec(`
-		INSERT INTO default_prompts (chat_id, image_prompt, updated_at)
+		INSERT INTO default_prompts (chat_id, template_id, updated_at)
 		VALUES (?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(chat_id) DO UPDATE SET
-			image_prompt = excluded.image_prompt,
+			template_id = excluded.template_id,
 			updated_at = CURRENT_TIMESTAMP
-	`, chatID, prompt)
+	`, chatID, templateID)
 	return err
 }
 
@@ -136,38 +234,30 @@ func (s *PromptStore) SetProvider(chatID int64, provider, modelName string) erro
 	return err
 }
 
-// SetVideoPrompt sets the default video prompt for a chat.
-func (s *PromptStore) SetVideoPrompt(chatID int64, prompt string) error {
-	_, err := s.db.Exec(`
-		INSERT INTO default_prompts (chat_id, video_prompt, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(chat_id) DO UPDATE SET
-			video_prompt = excluded.video_prompt,
-			updated_at = CURRENT_TIMESTAMP
-	`, chatID, prompt)
-	return err
-}
-
 // ListAllPrompts returns a paginated list of prompts with total count.
 func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]PromptEntry, int, error) {
 	// Build query with optional search.
 	whereClause := ""
 	args := []any{}
 	if search != "" {
-		whereClause = "WHERE chat_id LIKE ? OR image_prompt LIKE ? OR video_prompt LIKE ?"
+		whereClause = "WHERE d.chat_id LIKE ? OR t.name LIKE ?"
 		pattern := "%" + search + "%"
-		args = append(args, pattern, pattern, pattern)
+		args = append(args, pattern, pattern)
 	}
 
 	// Count total.
 	var total int
-	countQuery := "SELECT COUNT(*) FROM default_prompts " + whereClause
+	countQuery := "SELECT COUNT(*) FROM default_prompts d LEFT JOIN prompt_templates t ON d.template_id = t.id " + whereClause
 	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	// Fetch rows.
-	query := "SELECT chat_id, image_prompt, video_prompt, provider, model_name, updated_at FROM default_prompts " + whereClause + " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+	query := `
+		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.updated_at 
+		FROM default_prompts d
+		LEFT JOIN prompt_templates t ON d.template_id = t.id
+	` + whereClause + " ORDER BY d.updated_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := s.db.Query(query, args...)
@@ -179,8 +269,23 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 	var entries []PromptEntry
 	for rows.Next() {
 		var entry PromptEntry
-		if err := rows.Scan(&entry.ChatID, &entry.ImagePrompt, &entry.VideoPrompt, &entry.Provider, &entry.ModelName, &entry.UpdatedAt); err != nil {
+		var templateID sql.NullInt64
+		var templateName sql.NullString
+		var provider sql.NullString
+		var modelName sql.NullString
+		if err := rows.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &entry.UpdatedAt); err != nil {
 			return nil, 0, err
+		}
+		if templateID.Valid {
+			id := templateID.Int64
+			entry.TemplateID = &id
+			entry.TemplateName = templateName.String
+		}
+		if provider.Valid {
+			entry.Provider = provider.String
+		}
+		if modelName.Valid {
+			entry.ModelName = modelName.String
 		}
 		entries = append(entries, entry)
 	}
@@ -188,18 +293,17 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 	return entries, total, nil
 }
 
-// UpdatePrompts upserts both image and video prompts for a chat.
-func (s *PromptStore) UpdatePrompts(chatID int64, imagePrompt, videoPrompt, provider, modelName string) error {
+// UpdatePrompts updates the template assignment and provider for a chat.
+func (s *PromptStore) UpdatePrompts(chatID int64, templateID int64, provider, modelName string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO default_prompts (chat_id, image_prompt, video_prompt, provider, model_name, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO default_prompts (chat_id, template_id, provider, model_name, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(chat_id) DO UPDATE SET
-			image_prompt = excluded.image_prompt,
-			video_prompt = excluded.video_prompt,
+			template_id = excluded.template_id,
 			provider = excluded.provider,
 			model_name = excluded.model_name,
 			updated_at = CURRENT_TIMESTAMP
-	`, chatID, imagePrompt, videoPrompt, provider, modelName)
+	`, chatID, templateID, provider, modelName)
 	return err
 }
 
@@ -210,15 +314,14 @@ func (s *PromptStore) DeletePrompts(chatID int64) error {
 }
 
 // GetStats returns dashboard statistics.
-func (s *PromptStore) GetStats() (totalChats, imageCount, videoCount, totalPrompts int, err error) {
+func (s *PromptStore) GetStats() (totalChats, templateCount, totalPrompts int, err error) {
 	err = s.db.QueryRow(`
 		SELECT 
 			COUNT(*),
-			IFNULL(SUM(CASE WHEN image_prompt IS NOT NULL AND image_prompt != '' THEN 1 ELSE 0 END), 0),
-			IFNULL(SUM(CASE WHEN video_prompt IS NOT NULL AND video_prompt != '' THEN 1 ELSE 0 END), 0),
-			IFNULL(SUM(CASE WHEN (image_prompt IS NOT NULL AND image_prompt != '') OR (video_prompt IS NOT NULL AND video_prompt != '') THEN 1 ELSE 0 END), 0)
+			IFNULL(SUM(CASE WHEN template_id IS NOT NULL THEN 1 ELSE 0 END), 0),
+			COUNT(*)
 		FROM default_prompts
-	`).Scan(&totalChats, &imageCount, &videoCount, &totalPrompts)
+	`).Scan(&totalChats, &templateCount, &totalPrompts)
 	return
 }
 

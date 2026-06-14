@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -155,35 +156,70 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	text := message.Text
 	caption := message.Caption
 
-	// Handle /set-image-prompt
-	if strings.HasPrefix(text, "/set-image-prompt") {
-		prompt := strings.TrimSpace(strings.TrimPrefix(text, "/set-image-prompt"))
-		if prompt == "" {
-			app.bot.SendMessage(chatID, "Usage: /set-image-prompt <prompt>\nSets the default prompt used when /image is sent without one.")
+	// Handle /set-template
+	if strings.HasPrefix(text, "/set-template") {
+		args := strings.TrimSpace(strings.TrimPrefix(text, "/set-template"))
+		if args == "" {
+			app.bot.SendMessage(chatID, "Usage: /set-template <template_id>\nAssigns a template to this chat for image/video generation.")
 			return
 		}
-		if err := app.storage.SetImagePrompt(chatID, prompt); err != nil {
-			slog.Error("failed to set image prompt", "error", err)
-			app.bot.SendMessage(chatID, "❌ Failed to save default prompt.")
+		templateID, err := strconv.ParseInt(args, 10, 64)
+		if err != nil {
+			app.bot.SendMessage(chatID, "❌ Invalid template ID. Use a number.")
 			return
 		}
-		app.bot.SendMessage(chatID, fmt.Sprintf("✅ Default image prompt set to:\n\"%s\"", prompt))
+
+		// Verify template exists.
+		template, err := app.storage.GetTemplate(templateID)
+		if err != nil {
+			slog.Error("failed to get template", "error", err)
+			app.bot.SendMessage(chatID, "❌ Failed to verify template.")
+			return
+		}
+		if template == nil {
+			app.bot.SendMessage(chatID, fmt.Sprintf("❌ Template not found: %d", templateID))
+			return
+		}
+
+		if err := app.storage.SetTemplate(chatID, templateID); err != nil {
+			slog.Error("failed to set template", "error", err)
+			app.bot.SendMessage(chatID, "❌ Failed to save template assignment.")
+			return
+		}
+		app.bot.SendMessage(chatID, fmt.Sprintf("✅ Template set to: %s", template.Name))
 		return
 	}
 
-	// Handle /set-video-prompt
-	if strings.HasPrefix(text, "/set-video-prompt") {
-		prompt := strings.TrimSpace(strings.TrimPrefix(text, "/set-video-prompt"))
-		if prompt == "" {
-			app.bot.SendMessage(chatID, "Usage: /set-video-prompt <prompt>\nSets the default prompt used when /video is sent without one.")
+	// Handle /templates
+	if strings.HasPrefix(text, "/templates") {
+		templates, err := app.storage.ListTemplates()
+		if err != nil {
+			slog.Error("failed to list templates", "error", err)
+			app.bot.SendMessage(chatID, "❌ Failed to load templates.")
 			return
 		}
-		if err := app.storage.SetVideoPrompt(chatID, prompt); err != nil {
-			slog.Error("failed to set video prompt", "error", err)
-			app.bot.SendMessage(chatID, "❌ Failed to save default prompt.")
+		if len(templates) == 0 {
+			app.bot.SendMessage(chatID, "No templates available. Create templates from the dashboard.")
 			return
 		}
-		app.bot.SendMessage(chatID, fmt.Sprintf("✅ Default video prompt set to:\n\"%s\"", prompt))
+		var b strings.Builder
+		b.WriteString("📋 *Available Templates*\n\n")
+		for _, t := range templates {
+			hasImage := ""
+			hasVideo := ""
+			if t.ImagePrompt != "" {
+				hasImage = " 🖼️"
+			}
+			if t.VideoPrompt != "" {
+				hasVideo = " 🎬"
+			}
+			b.WriteString(fmt.Sprintf("*%d*. %s%s%s\n", t.ID, t.Name, hasImage, hasVideo))
+			if t.Description != "" {
+				b.WriteString(fmt.Sprintf("   _%s_\n", t.Description))
+			}
+		}
+		b.WriteString("\nUse `/set-template <id>` to assign one to this chat.")
+		app.bot.SendMessage(chatID, b.String())
 		return
 	}
 
@@ -236,14 +272,15 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if prompt == "" {
-			entry, err := app.storage.GetPrompts(chatID)
+			// Get template for this chat
+			template, err := app.storage.GetChatTemplate(chatID)
 			if err != nil {
-				slog.Error("failed to get prompts", "error", err)
+				slog.Error("failed to get chat template", "error", err)
 			}
-			if entry != nil && entry.ImagePrompt != "" {
-				prompt = entry.ImagePrompt
+			if template != nil && template.ImagePrompt != "" {
+				prompt = template.ImagePrompt
 			} else {
-				app.bot.SendMessage(chatID, "Usage: /image <prompt>\nOr set a default: /set-image-prompt <prompt>")
+				app.bot.SendMessage(chatID, "Usage: /image <prompt>\nOr set a template: /templates then /set-template <id>")
 				return
 			}
 		}
@@ -299,14 +336,15 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if prompt == "" {
-			entry, err := app.storage.GetPrompts(chatID)
+			// Get template for this chat
+			template, err := app.storage.GetChatTemplate(chatID)
 			if err != nil {
-				slog.Error("failed to get prompts", "error", err)
+				slog.Error("failed to get chat template", "error", err)
 			}
-			if entry != nil && entry.VideoPrompt != "" {
-				prompt = entry.VideoPrompt
+			if template != nil && template.VideoPrompt != "" {
+				prompt = template.VideoPrompt
 			} else {
-				app.bot.SendMessage(chatID, "Usage: /video <prompt>\nOr set a default: /set-video-prompt <prompt>")
+				app.bot.SendMessage(chatID, "Usage: /video <prompt>\nOr set a template: /templates then /set-template <id>")
 				return
 			}
 		}

@@ -107,29 +107,30 @@ func (app *App) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ImagePrompt string `json:"imagePrompt"`
-		VideoPrompt string `json:"videoPrompt"`
-		Provider    string `json:"provider"`
-		ModelName   string `json:"modelName"`
+		TemplateID int64  `json:"templateId"`
+		Provider   string `json:"provider"`
+		ModelName  string `json:"modelName"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := app.storage.UpdatePrompts(chatID, req.ImagePrompt, req.VideoPrompt, req.Provider, req.ModelName); err != nil {
+	if err := app.storage.UpdatePrompts(chatID, req.TemplateID, req.Provider, req.ModelName); err != nil {
 		slog.Error("failed to update prompt", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update prompt")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"chatId":      chatID,
-		"imagePrompt": req.ImagePrompt,
-		"videoPrompt": req.VideoPrompt,
-		"provider":    req.Provider,
-		"modelName":   req.ModelName,
-	})
+	// Get updated entry to return resolved template name
+	entry, err := app.storage.GetPrompts(chatID)
+	if err != nil {
+		slog.Error("failed to get updated prompt", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get updated prompt")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, entry)
 }
 
 func (app *App) handleDeletePrompt(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +151,7 @@ func (app *App) handleDeletePrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleGetStats(w http.ResponseWriter, r *http.Request) {
-	totalChats, imageCount, videoCount, totalPrompts, err := app.storage.GetStats()
+	totalChats, templateCount, totalPrompts, err := app.storage.GetStats()
 	if err != nil {
 		slog.Error("failed to get stats", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get stats")
@@ -158,10 +159,9 @@ func (app *App) handleGetStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"totalChats":   totalChats,
-		"imageCount":   imageCount,
-		"videoCount":   videoCount,
-		"totalPrompts": totalPrompts,
+		"totalChats":    totalChats,
+		"templateCount": templateCount,
+		"totalPrompts":  totalPrompts,
 	})
 }
 

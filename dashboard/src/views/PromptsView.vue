@@ -7,7 +7,6 @@ import { message } from 'ant-design-vue'
 import {
   EditOutlined,
   DeleteOutlined,
-  CopyOutlined,
   SearchOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
@@ -17,7 +16,7 @@ const promptsStore = usePromptsStore()
 const templatesStore = useTemplatesStore()
 
 const editModalVisible = ref(false)
-const editForm = ref<PromptFormData>({ imagePrompt: '', videoPrompt: '', provider: '', modelName: '' })
+const editForm = ref<PromptFormData>({ templateId: null, provider: '', modelName: '' })
 const currentChatId = ref<number | null>(null)
 const selectedTemplate = ref<number | null>(null)
 
@@ -59,27 +58,22 @@ function handlePageChange(page: number, pageSize: number) {
 function openEditModal(record: Prompt) {
   currentChatId.value = record.chatId
   editForm.value = {
-    imagePrompt: record.imagePrompt || '',
-    videoPrompt: record.videoPrompt || '',
+    templateId: record.templateId || null,
     provider: record.provider || providers.value?.default || '',
     modelName: record.modelName || '',
   }
-  selectedTemplate.value = null
+  selectedTemplate.value = record.templateId || null
   editModalVisible.value = true
-}
-
-function applyTemplate() {
-  if (selectedTemplate.value) {
-    const template = templatesStore.items.find((t) => t.id === selectedTemplate.value)
-    if (template) {
-      editForm.value.imagePrompt = template.imagePrompt || editForm.value.imagePrompt
-      editForm.value.videoPrompt = template.videoPrompt || editForm.value.videoPrompt
-    }
-  }
 }
 
 async function handleSave() {
   if (currentChatId.value === null) return
+  
+  // Ensure templateId is set from the selector
+  if (selectedTemplate.value !== null) {
+    editForm.value.templateId = selectedTemplate.value
+  }
+  
   const success = await promptsStore.savePrompt(currentChatId.value, editForm.value)
   if (success) {
     message.success('Prompt updated successfully')
@@ -98,9 +92,10 @@ async function handleDelete(chatId: number) {
   }
 }
 
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text)
-  message.success('Copied to clipboard')
+function getTemplateName(templateId: number | null): string {
+  if (!templateId) return '—'
+  const template = templatesStore.items.find((t) => t.id === templateId)
+  return template ? template.name : `#${templateId}`
 }
 </script>
 
@@ -109,14 +104,14 @@ function copyToClipboard(text: string) {
     <div class="page-header">
       <div>
         <h1 class="page-title">Prompts</h1>
-        <p class="page-subtitle">Manage your chat prompts and templates</p>
+        <p class="page-subtitle">Manage your chat templates and providers</p>
       </div>
     </div>
 
     <div class="toolbar">
       <a-input-search
         v-model:value="searchText"
-        placeholder="Search by chat ID or prompt content..."
+        placeholder="Search by chat ID or template name..."
         class="search-input"
         @search="handleSearch"
       >
@@ -155,34 +150,10 @@ function copyToClipboard(text: string) {
           <span class="chat-id">{{ text }}</span>
         </template>
       </a-table-column>
-      <a-table-column title="Image Prompt" data-index="imagePrompt" key="imagePrompt" ellipsis>
-        <template #default="{ text }">
-          <div class="prompt-cell">
-            <span v-if="text" class="prompt-text">{{ text }}</span>
-            <span v-else class="empty-text">—</span>
-            <span
-              v-if="text"
-              class="copy-btn"
-              @click="copyToClipboard(text)"
-            >
-              <CopyOutlined />
-            </span>
-          </div>
-        </template>
-      </a-table-column>
-      <a-table-column title="Video Prompt" data-index="videoPrompt" key="videoPrompt" ellipsis>
-        <template #default="{ text }">
-          <div class="prompt-cell">
-            <span v-if="text" class="prompt-text">{{ text }}</span>
-            <span v-else class="empty-text">—</span>
-            <span
-              v-if="text"
-              class="copy-btn"
-              @click="copyToClipboard(text)"
-            >
-              <CopyOutlined />
-            </span>
-          </div>
+      <a-table-column title="Template" data-index="templateId" key="templateId" width="200">
+        <template #default="{ text, record }">
+          <span v-if="record.templateName" class="template-name">{{ record.templateName }}</span>
+          <span v-else class="empty-text">—</span>
         </template>
       </a-table-column>
       <a-table-column title="Provider" data-index="provider" key="provider" width="120">
@@ -232,13 +203,11 @@ function copyToClipboard(text: string) {
           <a-input :value="currentChatId" disabled />
         </a-form-item>
 
-        <a-form-item label="Apply Template">
+        <a-form-item label="Template" required>
           <a-select
             v-model:value="selectedTemplate"
             placeholder="Select a template"
             style="width: 100%"
-            allow-clear
-            @change="applyTemplate"
           >
             <a-select-option
               v-for="template in templatesStore.items"
@@ -284,25 +253,24 @@ function copyToClipboard(text: string) {
           </a-select>
         </a-form-item>
 
-        <a-form-item label="Image Prompt">
-          <a-textarea
-            v-model:value="editForm.imagePrompt"
-            :rows="4"
-            :maxlength="2000"
-            show-count
-            placeholder="Enter default image prompt..."
-          />
-        </a-form-item>
-
-        <a-form-item label="Video Prompt">
-          <a-textarea
-            v-model:value="editForm.videoPrompt"
-            :rows="4"
-            :maxlength="2000"
-            show-count
-            placeholder="Enter default video prompt..."
-          />
-        </a-form-item>
+        <!-- Template Preview -->
+        <div v-if="selectedTemplate" class="template-preview">
+          <div class="preview-header">
+            <span class="preview-label">Template Preview</span>
+          </div>
+          <div v-if="templatesStore.items.find(t => t.id === selectedTemplate)?.imagePrompt" class="preview-section">
+            <span class="preview-type">Image Prompt</span>
+            <p class="preview-text">
+              {{ templatesStore.items.find(t => t.id === selectedTemplate)?.imagePrompt }}
+            </p>
+          </div>
+          <div v-if="templatesStore.items.find(t => t.id === selectedTemplate)?.videoPrompt" class="preview-section">
+            <span class="preview-type">Video Prompt</span>
+            <p class="preview-text">
+              {{ templatesStore.items.find(t => t.id === selectedTemplate)?.videoPrompt }}
+            </p>
+          </div>
+        </div>
       </a-form>
     </a-modal>
   </div>
@@ -360,38 +328,14 @@ function copyToClipboard(text: string) {
   font-size: 13px;
 }
 
-.prompt-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.prompt-text {
+.template-name {
+  font-weight: 600;
   color: #0F172A;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .empty-text {
   color: #94A3B8;
   font-style: italic;
-}
-
-.copy-btn {
-  color: #00D9A5;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
-  transition: all 0.15s;
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
-.copy-btn:hover {
-  background: rgba(0, 217, 165, 0.1);
-  opacity: 1;
 }
 
 .timestamp {
@@ -431,20 +375,6 @@ function copyToClipboard(text: string) {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .search-input {
-    width: 100%;
-  }
-  .toolbar-actions {
-    justify-content: flex-end;
-  }
-}
-
 .provider-tag {
   font-weight: 600;
   color: #00D9A5;
@@ -463,5 +393,64 @@ function copyToClipboard(text: string) {
   background: rgba(96, 165, 250, 0.1);
   padding: 2px 8px;
   border-radius: 6px;
+}
+
+/* Template Preview */
+.template-preview {
+  margin-top: 16px;
+  padding: 16px;
+  background: #F8FAFC;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+}
+
+.preview-header {
+  margin-bottom: 12px;
+}
+
+.preview-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.preview-section {
+  margin-bottom: 12px;
+}
+
+.preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.preview-type {
+  font-weight: 600;
+  font-size: 12px;
+  color: #00D9A5;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.preview-text {
+  font-size: 13px;
+  color: #64748B;
+  margin: 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-input {
+    width: 100%;
+  }
+  .toolbar-actions {
+    justify-content: flex-end;
+  }
 }
 </style>

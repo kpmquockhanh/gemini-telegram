@@ -12,19 +12,21 @@ import (
 	"syscall"
 	"time"
 
-	"gemini-telegram-bot/gemini"
+	"gemini-telegram-bot/ai"
+	"gemini-telegram-bot/ai/providers/gemini"
+	"gemini-telegram-bot/ai/providers/kling"
 	"gemini-telegram-bot/storage"
 	"gemini-telegram-bot/worker"
 )
 
 // App holds all application dependencies.
 type App struct {
-	config   *Config
-	bot      *BotClient
-	gemini   *gemini.Client
-	pool     *worker.Pool
-	storage  *storage.PromptStore
-	jobMap   map[int64]*ActiveJob
+	config    *Config
+	bot       *BotClient
+	providers *ai.Registry
+	pool      *worker.Pool
+	storage   *storage.PromptStore
+	jobMap    map[int64]*ActiveJob
 }
 
 // ActiveJob tracks an in-progress job for a chat.
@@ -45,10 +47,20 @@ func main() {
 	bot := NewBotClient(config.BotToken)
 
 	ctx := context.Background()
+
+	// Initialize AI providers.
+	providers := ai.NewRegistry()
+
 	geminiClient, err := gemini.NewClient(ctx, config.GeminiAPIKey)
 	if err != nil {
 		slog.Error("failed to initialize gemini client", "error", err)
 		os.Exit(1)
+	}
+	providers.Register(geminiClient)
+
+	if config.KlingAPIKey != "" {
+		klingClient := kling.NewClient(config.KlingAPIKey)
+		providers.Register(klingClient)
 	}
 
 	store, err := storage.NewPromptStore(config.DatabasePath)
@@ -59,11 +71,11 @@ func main() {
 	defer store.Close()
 
 	app := &App{
-		config:   config,
-		bot:      bot,
-		gemini:   geminiClient,
-		storage:  store,
-		jobMap:   make(map[int64]*ActiveJob),
+		config:    config,
+		bot:       bot,
+		providers: providers,
+		storage:   store,
+		jobMap:    make(map[int64]*ActiveJob),
 	}
 
 	// Create worker pool.
@@ -71,9 +83,8 @@ func main() {
 
 	// Setup HTTP server.
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", app.handleHealth)
-	mux.HandleFunc("GET /health", app.handleHealth)
 	mux.HandleFunc("POST /telegram", app.handleWebhook)
+	app.setupAPIRoutes(mux)
 
 	server := &http.Server{
 		Addr:    ":" + config.Port,
@@ -173,6 +184,45 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		app.bot.SendMessage(chatID, fmt.Sprintf("✅ Default video prompt set to:\n\"%s\"", prompt))
+		return
+	}
+
+	// Handle /set-provider
+	if strings.HasPrefix(text, "/set-provider") {
+		args := strings.TrimSpace(strings.TrimPrefix(text, "/set-provider"))
+		parts := strings.Fields(args)
+		if len(parts) < 2 {
+			app.bot.SendMessage(chatID, "Usage: /set-provider <provider> <model>\nAvailable providers: gemini, kling\nExample: /set-provider gemini gemini-3.1-flash-image")
+			return
+		}
+		providerName := parts[0]
+		modelName := parts[1]
+
+		provider := app.providers.Get(providerName)
+		if provider == nil {
+			app.bot.SendMessage(chatID, fmt.Sprintf("❌ Provider not found: %s", providerName))
+			return
+		}
+
+		// Validate model exists.
+		found := false
+		for _, m := range provider.GetModels() {
+			if m == modelName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			app.bot.SendMessage(chatID, fmt.Sprintf("❌ Model not found: %s\nAvailable models: %s", modelName, strings.Join(provider.GetModels(), ", ")))
+			return
+		}
+
+		if err := app.storage.SetProvider(chatID, providerName, modelName); err != nil {
+			slog.Error("failed to set provider", "error", err)
+			app.bot.SendMessage(chatID, "❌ Failed to save provider.")
+			return
+		}
+		app.bot.SendMessage(chatID, fmt.Sprintf("✅ Provider set to %s with model %s", providerName, modelName))
 		return
 	}
 
@@ -307,16 +357,40 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 	slog.Info("handling job", "job_id", job.ID, "type", job.Type)
 
+	// Get provider and model from storage for this chat.
+	var providerName, modelName string
+	entry, err := app.storage.GetPrompts(job.ChatID)
+	if err != nil {
+		slog.Error("failed to get prompts for provider selection", "error", err)
+	} else if entry != nil {
+		providerName = entry.Provider
+		modelName = entry.ModelName
+	}
+
+	// Fallback to default provider.
+	if providerName == "" {
+		providerName = app.providers.GetDefault()
+	}
+
+	provider := app.providers.Get(providerName)
+	if provider == nil {
+		return worker.Result{Error: fmt.Errorf("provider not found: %s", providerName)}
+	}
+
+	opts := ai.GenerateOptions{
+		ModelName: modelName,
+	}
+
 	switch job.Type {
 	case worker.JobTypeImage:
-		data, err := app.gemini.GenerateImage(ctx, job.Prompt, job.ImageData, job.MimeType)
+		data, err := provider.GenerateImage(ctx, job.Prompt, job.ImageData, job.MimeType, opts)
 		if err != nil {
 			return worker.Result{Error: err}
 		}
 		return worker.Result{Data: data}
 
 	case worker.JobTypeVideo:
-		data, err := app.gemini.GenerateVideo(ctx, job.Prompt, job.ImageData, job.MimeType)
+		data, err := provider.GenerateVideo(ctx, job.Prompt, job.ImageData, job.MimeType, opts)
 		if err != nil {
 			return worker.Result{Error: err}
 		}

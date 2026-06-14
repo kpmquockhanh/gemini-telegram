@@ -1,0 +1,7 @@
+start - Start the bot and see how to use
+help - Show all available commands and usage
+image - Generate an image from a prompt or attached template
+video - Generate a video from a prompt or attached template
+templates - List all available templates you can use
+set-template - Assign a template to this chat for image/video generation
+set-provider - Set AI provider and model for this chat

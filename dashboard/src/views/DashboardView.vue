@@ -142,12 +142,12 @@ const statCards = [
   font-family: 'Space Grotesk', sans-serif;
   font-size: 28px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: #0F172A;
   margin: 0;
   letter-spacing: -0.03em;
 }
 .page-subtitle {
-  color: #8B95A8;
+  color: #475569;
   margin: 6px 0 0;
   font-size: 15px;
 }
@@ -156,14 +156,16 @@ const statCards = [
 .artifact-card {
   position: relative;
   border-radius: 16px;
-  background: #111827;
+  background: #FFFFFF;
   overflow: hidden;
   transition: transform 0.25s ease, box-shadow 0.25s ease;
   cursor: default;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .artifact-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .artifact-border {
@@ -244,7 +246,7 @@ const statCards = [
   font-family: 'Space Grotesk', sans-serif;
   font-size: 32px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: #0F172A;
   line-height: 1;
   letter-spacing: -0.02em;
 }
@@ -252,7 +254,7 @@ const statCards = [
 .artifact-label {
   font-size: 13px;
   font-weight: 500;
-  color: #8B95A8;
+  color: #475569;
 }
 
 /* ── Section ── */
@@ -275,13 +277,13 @@ const statCards = [
   font-family: 'Space Grotesk', sans-serif;
   font-size: 20px;
   font-weight: 600;
-  color: #F8FAFC;
+  color: #0F172A;
   margin: 0;
   letter-spacing: -0.02em;
 }
 
 .section-desc {
-  color: #8B95A8;
+  color: #475569;
   font-size: 13px;
   margin: 0;
 }

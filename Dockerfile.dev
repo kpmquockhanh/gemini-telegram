@@ -1,0 +1,34 @@
+# Stage 1: Development base image
+FROM golang:1.24-alpine AS dev
+
+# Install development tools (build-base includes gcc, musl-dev for compiling)
+RUN apk add --no-cache git nodejs npm build-base
+
+# Install Go development tools (Air module renamed to air-verse)
+RUN GOPATH=/go GOBIN=/go/bin go install github.com/air-verse/air@v1.61.7 && \
+    ln -s /go/bin/air /usr/local/bin/air
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy package.json for Node.js dependencies
+COPY package*.json ./
+RUN if [ -f package.json ]; then npm install; fi
+
+# Copy dashboard package.json
+COPY dashboard/package*.json ./dashboard/
+RUN if [ -f dashboard/package.json ]; then cd dashboard && npm install; fi
+
+# Copy the rest of the application
+COPY . .
+
+# Expose ports
+# 3000 - Go API
+# 8080 - Vue dev server
+EXPOSE 3000 8080
+
+# Default command - can be overridden in docker-compose
+CMD ["air", "-c", ".air.toml"]

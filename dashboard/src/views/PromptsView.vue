@@ -316,12 +316,12 @@ function copyToClipboard(text: string) {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 28px;
   font-weight: 700;
-  color: #F8FAFC;
+  color: #0F172A;
   margin: 0;
   letter-spacing: -0.03em;
 }
 .page-subtitle {
-  color: #8B95A8;
+  color: #475569;
   margin: 6px 0 0;
   font-size: 15px;
 }
@@ -345,7 +345,7 @@ function copyToClipboard(text: string) {
 }
 
 .refresh-btn {
-  color: #8B95A8;
+  color: #475569;
 }
 
 .data-table {
@@ -367,7 +367,7 @@ function copyToClipboard(text: string) {
 }
 
 .prompt-text {
-  color: #CBD5E1;
+  color: #0F172A;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -375,7 +375,7 @@ function copyToClipboard(text: string) {
 }
 
 .empty-text {
-  color: #475569;
+  color: #94A3B8;
   font-style: italic;
 }
 
@@ -395,7 +395,7 @@ function copyToClipboard(text: string) {
 }
 
 .timestamp {
-  color: #8B95A8;
+  color: #475569;
   font-size: 13px;
 }
 

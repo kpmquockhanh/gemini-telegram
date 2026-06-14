@@ -10,11 +10,14 @@ A Telegram bot that uses Google Gemini AI to generate images and videos from tex
 - Real-time progress updates while generating
 - Goroutine-based worker pool for handling concurrent requests
 - SQLite persistence for default prompts per chat
+- **Web Dashboard** — Manage prompts and templates via Vue 3 UI
 
 ## Architecture
 
 ```
 main.go              HTTP server, Telegram webhook handler
+api.go               REST API for dashboard
+web.go               Embedded static files (Vue SPA)
 config.go            Environment variables & configuration
 bot.go               Telegram API wrapper (sendMessage, sendPhoto, etc.)
 worker/
@@ -25,7 +28,8 @@ gemini/
   image.go           Image generation logic
   video.go           Video generation + polling logic
 storage/
-  prompts.go         SQLite persistence for default prompts
+  prompts.go         SQLite persistence for default prompts & templates
+dashboard/           Vue 3 + Pinia + Ant Design Vue frontend
 ```
 
 ## Setup
@@ -56,9 +60,72 @@ docker-compose up --build
 Or build locally:
 
 ```bash
+# Build Vue frontend
+cd dashboard && npm run build && cd ..
+
+# Build Go binary
 go build -o bot .
 ./bot
 ```
+
+## Development
+
+For development with hot reload, use the development Docker setup:
+
+### Quick Start
+
+```bash
+# Start all services (API + Dashboard)
+make dev
+# Or:
+./dev.sh dev
+```
+
+### Development Commands
+
+```bash
+# Start services in background
+make up
+
+# Start with logs
+make start
+
+# Stop services
+make stop
+
+# Rebuild containers
+make build
+
+# View logs
+make logs
+
+# Clean up
+make clean
+
+# Start only API
+make api
+
+# Start only Dashboard
+make dashboard
+
+# Enter API container shell
+make shell-api
+
+# Run tests
+make test
+```
+
+### Development URLs
+
+- **API**: http://localhost:3000
+- **Dashboard**: http://localhost:8080
+
+### How it works
+
+- **API container** (`make api`): Runs Go backend with [Air](https://github.com/cosmtrek/air) for hot reload. Changes to `.go` files trigger automatic rebuild.
+- **Dashboard container** (`make dashboard`): Runs Vite dev server with hot module replacement. Changes to Vue files are reflected immediately.
+- **Volumes**: Source code is mounted into containers so changes are reflected without rebuilding.
+- **SQLite**: Database file is persisted in `./data/prompts.db`.
 
 ### 4. Set the Telegram webhook:
 
@@ -89,11 +156,40 @@ Replace `<BOT_TOKEN>` with your actual token and `<your-domain>` with your deplo
 
 ## API Endpoints
 
+### Telegram Webhook
+
 | Method | Path | Description |
 |---|---|---|
-| GET | `/` | Health check ("hello world") |
-| GET | `/health` | Liveness probe |
 | POST | `/telegram` | Telegram webhook handler |
+
+### Dashboard API
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | Dashboard (Vue SPA) |
+| GET | `/health` | Liveness probe |
+| GET | `/api/stats` | Dashboard statistics |
+| GET | `/api/prompts` | List prompts (paginated) |
+| GET | `/api/prompts/{chatId}` | Get single prompt |
+| PUT | `/api/prompts/{chatId}` | Update prompt |
+| DELETE | `/api/prompts/{chatId}` | Delete prompt |
+| GET | `/api/templates` | List templates |
+| POST | `/api/templates` | Create template |
+| PUT | `/api/templates/{id}` | Update template |
+| DELETE | `/api/templates/{id}` | Delete template |
+
+## Dashboard
+
+Access the dashboard at `http://localhost:3000/` when running locally.
+
+**Features:**
+- Dashboard overview with statistics cards
+- Prompts table with search, pagination, and filters
+- Edit prompts with template application
+- Copy prompt text to clipboard
+- Template management (CRUD)
+- Dark/light mode toggle
+- Responsive sidebar navigation
 
 ## License
 

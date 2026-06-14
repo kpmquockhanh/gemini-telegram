@@ -21,3 +21,4 @@ bot
 *.sqlite
 *.sqlite3
 *.db-journal
+bot_armv7

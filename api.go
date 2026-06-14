@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -272,6 +273,13 @@ func (app *App) handleSPA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// In development mode, webFS is nil - dashboard is served separately by Vite
+	if webFS == nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<h1>Development Mode</h1><p>Dashboard is served separately at <a href=\"http://localhost:8080\">http://localhost:8080</a></p>"))
+		return
+	}
+
 	// Serve static files from embedded dist.
 	path := strings.TrimPrefix(r.URL.Path, "/")
 	if path == "" {
@@ -279,10 +287,10 @@ func (app *App) handleSPA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if file exists in embedded FS.
-	data, err := webFS.ReadFile("dashboard/dist/" + path)
+	data, err := fs.ReadFile(webFS, "dashboard/dist/"+path)
 	if err != nil {
 		// Fallback to index.html for SPA routes.
-		data, err = webFS.ReadFile("dashboard/dist/index.html")
+		data, err = fs.ReadFile(webFS, "dashboard/dist/index.html")
 		if err != nil {
 			writeError(w, http.StatusNotFound, "not found")
 			return

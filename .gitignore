@@ -14,3 +14,10 @@ Thumbs.db
 coverage/
 .cache/
 default-prompts.json
+bot
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal

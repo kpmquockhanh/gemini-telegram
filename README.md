@@ -17,19 +17,21 @@ A Telegram bot that uses Google Gemini AI to generate images and videos from tex
 ```
 main.go              HTTP server, Telegram webhook handler
 api.go               REST API for dashboard
-web.go               Embedded static files (Vue SPA)
+web.go               Embedded static files (Vue SPA) — production build
+web_dev.go           Dev mode build tag (dashboard served by Vite)
 config.go            Environment variables & configuration
 bot.go               Telegram API wrapper (sendMessage, sendPhoto, etc.)
 worker/
   pool.go            Goroutine worker pool with job queue
   job.go             Job types and result channels
-gemini/
-  client.go          Gemini SDK client initialization
-  image.go           Image generation logic
-  video.go           Video generation + polling logic
+ai/
+  provider.go        Provider interface and registry
+  providers/
+    gemini/          Google Gemini provider (image + video)
+    kling/           Kling AI provider (video)
 storage/
   prompts.go         SQLite persistence for default prompts & templates
-dashboard/           Vue 3 + Pinia + Ant Design Vue frontend
+dashboard/           Vue 3 + Vite + Pinia frontend
 ```
 
 ## Setup
@@ -146,13 +148,6 @@ Replace `<BOT_TOKEN>` with your actual token and `<your-domain>` with your deplo
 | `PORT` | No | `3000` | Server port |
 | `WORKER_POOL_SIZE` | No | `4` | Number of worker goroutines |
 | `DATABASE_PATH` | No | `./data/prompts.db` | SQLite database path |
-
-## Why Go?
-
-- **Goroutines**: ~2-4KB memory per worker vs ~4-8MB per Node.js thread
-- **No serialization overhead**: Jobs share memory directly (no `postMessage`/`TransferableArrayBuffer`)
-- **Native context cancellation**: Clean shutdown with `context.Context`
-- **SQLite**: Better concurrency than JSON file for prompt storage
 
 ## API Endpoints
 

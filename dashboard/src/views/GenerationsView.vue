@@ -1,35 +1,61 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useLogsStore } from '@/stores/logs'
+import { ref, computed, watch } from 'vue'
+import { listGenerationHistory, clearGenerationHistory } from '@/api/client'
 import {
   SearchOutlined,
   ReloadOutlined,
   DeleteOutlined,
   HistoryOutlined,
 } from '@ant-design/icons-vue'
-// import type { GenerationHistory } from '@/types'
+import type { GenerationHistory } from '@/types'
 import { message, Modal } from 'ant-design-vue'
 
-const logsStore = useLogsStore()
+const history = ref<GenerationHistory[]>([])
+const total = ref(0)
+const page = ref(1)
+const limit = ref(20)
+const loading = ref(false)
 
 const searchText = ref('')
 const statusFilter = ref<'all' | 'success' | 'error'>('all')
 const expandedRows = ref<Set<string>>(new Set())
 
-const filteredHistory = computed(() => {
-  let history = logsStore.generationHistory
-  if (statusFilter.value !== 'all') {
-    history = history.filter((h) => h.status === statusFilter.value)
-  }
-  if (searchText.value.trim()) {
-    const q = searchText.value.toLowerCase()
-    history = history.filter(
-      (h) =>
-        h.operation.toLowerCase().includes(q) ||
-        JSON.stringify(h.params).toLowerCase().includes(q),
+const filteredHistory = computed(() => history.value)
+
+async function fetchHistory() {
+  loading.value = true
+  try {
+    const res = await listGenerationHistory(
+      page.value,
+      limit.value,
+      statusFilter.value,
+      searchText.value,
     )
+    history.value = res.items
+    total.value = res.total
+  } catch (err) {
+    message.error('Failed to load generation history')
+    console.error(err)
+  } finally {
+    loading.value = false
   }
-  return history
+}
+
+function onPageChange(newPage: number, newPageSize: number) {
+  page.value = newPage
+  limit.value = newPageSize
+  fetchHistory()
+}
+
+function onShowSizeChange(newPage: number, newPageSize: number) {
+  page.value = newPage
+  limit.value = newPageSize
+  fetchHistory()
+}
+
+watch([statusFilter], () => {
+  page.value = 1
+  fetchHistory()
 })
 
 function formatTime(ts: string) {
@@ -56,20 +82,30 @@ function handleClear() {
     content: 'This will permanently remove all generation history. This action cannot be undone.',
     okText: 'Clear',
     okType: 'danger',
-    onOk: () => {
-      logsStore.clearGenerationHistory()
-      message.success('Generation history cleared')
+    onOk: async () => {
+      try {
+        await clearGenerationHistory()
+        message.success('Generation history cleared')
+        page.value = 1
+        await fetchHistory()
+      } catch (err) {
+        message.error('Failed to clear generation history')
+        console.error(err)
+      }
     },
   })
 }
 
-function prettyJson(obj: unknown): string {
+function prettyJson(str: string): string {
+  if (!str) return ''
   try {
-    return JSON.stringify(obj, null, 2)
+    return JSON.stringify(JSON.parse(str), null, 2)
   } catch {
-    return String(obj)
+    return str
   }
 }
+
+fetchHistory()
 </script>
 
 <template>
@@ -80,16 +116,17 @@ function prettyJson(obj: unknown): string {
           <HistoryOutlined />
           Generation History
         </h1>
-        <p class="page-subtitle">Local record of requests, parameters, and results</p>
+        <p class="page-subtitle">Database record of image/video generation requests</p>
       </div>
     </div>
 
     <div class="toolbar">
       <a-input-search
         v-model:value="searchText"
-        placeholder="Search operations..."
+        placeholder="Search prompts, providers, models..."
         class="search-input"
         allow-clear
+        @search="fetchHistory"
       >
         <template #prefix>
           <SearchOutlined />
@@ -103,7 +140,7 @@ function prettyJson(obj: unknown): string {
           <a-select-option value="error">Error</a-select-option>
         </a-select>
 
-        <a-button class="refresh-btn" @click="logsStore.generationHistory">
+        <a-button class="refresh-btn" @click="fetchHistory">
           <ReloadOutlined />
           Refresh
         </a-button>
@@ -119,17 +156,39 @@ function prettyJson(obj: unknown): string {
       :data-source="filteredHistory"
       row-key="id"
       class="data-table"
-      :pagination="{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }"
+      :loading="loading"
+      :pagination="false"
     >
-      <a-table-column title="Time" key="timestamp" width="180">
+      <a-table-column title="Time" key="createdAt" width="180">
         <template #default="{ record }">
-          <span class="timestamp">{{ formatTime(record.timestamp) }}</span>
+          <span class="timestamp">{{ formatTime(record.createdAt) }}</span>
         </template>
       </a-table-column>
 
-      <a-table-column title="Operation" key="operation" width="160">
+      <a-table-column title="Chat" key="chatId" width="100">
         <template #default="{ record }">
-          <span class="operation-tag">{{ record.operation }}</span>
+          <span class="chat-id">{{ record.chatId }}</span>
+        </template>
+      </a-table-column>
+
+      <a-table-column title="Type" key="jobType" width="100">
+        <template #default="{ record }">
+          <span class="type-tag">{{ record.jobType }}</span>
+        </template>
+      </a-table-column>
+
+      <a-table-column title="Prompt" key="prompt" width="200">
+        <template #default="{ record }">
+          <div class="prompt-cell">{{ record.prompt }}</div>
+        </template>
+      </a-table-column>
+
+      <a-table-column title="Provider / Model" key="provider" width="180">
+        <template #default="{ record }">
+          <div class="provider-cell">
+            <div class="provider-name">{{ record.provider || '—' }}</div>
+            <div class="model-name">{{ record.modelName || '—' }}</div>
+          </div>
         </template>
       </a-table-column>
 
@@ -165,7 +224,21 @@ function prettyJson(obj: unknown): string {
       </a-table-column>
     </a-table>
 
-    <a-empty v-if="filteredHistory.length === 0" description="No generation history found" class="empty-state" />
+    <div class="pagination-bar">
+      <a-pagination
+        v-model:current="page"
+        v-model:page-size="limit"
+        :total="total"
+        :page-size-options="['10', '20', '50', '100']"
+        show-size-changer
+        show-total
+        :total-text="(total: number) => `Total ${total} items`"
+        @change="onPageChange"
+        @show-size-change="onShowSizeChange"
+      />
+    </div>
+
+    <a-empty v-if="filteredHistory.length === 0 && !loading" description="No generation history found" class="empty-state" />
   </div>
 </template>
 
@@ -224,7 +297,14 @@ function prettyJson(obj: unknown): string {
   font-family: 'SF Mono', monospace;
 }
 
-.operation-tag {
+.chat-id {
+  font-weight: 600;
+  color: #0f172a;
+  font-family: 'SF Mono', monospace;
+  font-size: 12px;
+}
+
+.type-tag {
   font-weight: 600;
   color: #00d9a5;
   font-family: 'SF Mono', monospace;
@@ -232,6 +312,34 @@ function prettyJson(obj: unknown): string {
   background: rgba(0, 217, 165, 0.1);
   padding: 2px 8px;
   border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.prompt-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.provider-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-name {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.model-name {
+  color: #475569;
+  font-size: 11px;
+  font-family: 'SF Mono', monospace;
 }
 
 .status-tag {
@@ -274,6 +382,12 @@ function prettyJson(obj: unknown): string {
 
 .empty-state {
   margin-top: 48px;
+}
+
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 /* Responsive */

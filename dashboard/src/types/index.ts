@@ -61,11 +61,22 @@ export interface TraceLog {
 }
 
 export interface GenerationHistory {
-  id: string
-  timestamp: string
-  operation: string
+  id: number
+  chatId: number
+  jobType: string
+  prompt: string
+  provider: string
+  modelName: string
   status: 'success' | 'error'
-  params?: Record<string, unknown>
-  result?: unknown
-  durationMs?: number
+  params: string
+  result: string
+  durationMs: number
+  createdAt: string
+}
+
+export interface GenerationHistoryListResponse {
+  items: GenerationHistory[]
+  total: number
+  page: number
+  limit: number
 }

@@ -408,6 +408,7 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 // handleJob is the worker pool's job handler.
 func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 	slog.Info("handling job", "job_id", job.ID, "type", job.Type)
+	start := time.Now()
 
 	// Get provider and model from storage for this chat.
 	var providerName, modelName string
@@ -426,29 +427,75 @@ func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 
 	provider := app.providers.Get(providerName)
 	if provider == nil {
-		return worker.Result{Error: fmt.Errorf("provider not found: %s", providerName)}
+		result := worker.Result{Error: fmt.Errorf("provider not found: %s", providerName)}
+		app.recordGenerationHistory(job, providerName, modelName, result, start)
+		return result
 	}
 
 	opts := ai.GenerateOptions{
 		ModelName: modelName,
 	}
 
+	var result worker.Result
 	switch job.Type {
 	case worker.JobTypeImage:
 		data, err := provider.GenerateImage(ctx, job.Prompt, job.ImageData, job.MimeType, opts)
 		if err != nil {
-			return worker.Result{Error: err}
+			result = worker.Result{Error: err}
+		} else {
+			result = worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 		}
-		return worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 
 	case worker.JobTypeVideo:
 		data, err := provider.GenerateVideo(ctx, job.Prompt, job.ImageData, job.MimeType, opts)
 		if err != nil {
-			return worker.Result{Error: err}
+			result = worker.Result{Error: err}
+		} else {
+			result = worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 		}
-		return worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 
 	default:
-		return worker.Result{Error: fmt.Errorf("unknown job type: %s", job.Type)}
+		result = worker.Result{Error: fmt.Errorf("unknown job type: %s", job.Type)}
+	}
+
+	app.recordGenerationHistory(job, providerName, modelName, result, start)
+	return result
+}
+
+func (app *App) recordGenerationHistory(job worker.Job, providerName, modelName string, result worker.Result, start time.Time) {
+	durationMs := time.Since(start).Milliseconds()
+	status := "success"
+	resultMap := map[string]any{}
+	if result.Error != nil {
+		status = "error"
+		resultMap["error"] = result.Error.Error()
+	} else {
+		resultMap["size"] = len(result.Data)
+		resultMap["provider"] = result.ProviderName
+		resultMap["model"] = result.ModelName
+	}
+
+	params := map[string]any{}
+	if job.MimeType != "" {
+		params["mimeType"] = job.MimeType
+	}
+	if len(job.ImageData) > 0 {
+		params["hasReferenceImage"] = true
+		params["referenceImageSize"] = len(job.ImageData)
+	}
+
+	_, err := app.storage.CreateGenerationHistory(
+		job.ChatID,
+		string(job.Type),
+		job.Prompt,
+		providerName,
+		modelName,
+		status,
+		params,
+		resultMap,
+		durationMs,
+	)
+	if err != nil {
+		slog.Error("failed to record generation history", "error", err)
 	}
 }

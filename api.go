@@ -348,6 +348,59 @@ func (app *App) handleSPA(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// --- Generation History Handlers ---
+
+func (app *App) handleListGenerationHistory(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	limit := 20
+	statusFilter := "all"
+	search := ""
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+	if s := r.URL.Query().Get("status"); s != "" {
+		statusFilter = s
+	}
+	if s := r.URL.Query().Get("search"); s != "" {
+		search = strings.TrimSpace(s)
+	}
+
+	offset := (page - 1) * limit
+	entries, total, err := app.storage.ListGenerationHistory(offset, limit, statusFilter, search)
+	if err != nil {
+		slog.Error("failed to list generation history", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list generation history")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": entries,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
+func (app *App) handleClearGenerationHistory(w http.ResponseWriter, r *http.Request) {
+	if err := app.storage.ClearGenerationHistory(); err != nil {
+		slog.Error("failed to clear generation history", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to clear generation history")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "cleared"})
+}
+
 // --- API Router Setup ---
 
 func (app *App) setupAPIRoutes(mux *http.ServeMux) {
@@ -366,6 +419,10 @@ func (app *App) setupAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/templates", withCORS(app.handleCreateTemplate))
 	mux.HandleFunc("PUT /api/templates/{id}", withCORS(app.handleUpdateTemplate))
 	mux.HandleFunc("DELETE /api/templates/{id}", withCORS(app.handleDeleteTemplate))
+
+	// Generation History
+	mux.HandleFunc("GET /api/generations", withCORS(app.handleListGenerationHistory))
+	mux.HandleFunc("DELETE /api/generations", withCORS(app.handleClearGenerationHistory))
 
 	// Health check
 	mux.HandleFunc("GET /health", withCORS(app.handleHealth))

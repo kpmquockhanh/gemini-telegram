@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { TraceLog, GenerationHistory } from '@/types'
+import type { TraceLog } from '@/types'
 
 const TRACE_KEY = 'gemini-trace-logs'
-const GENERATION_KEY = 'gemini-generation-history'
 const MAX_ITEMS = 500
 
 function load<T>(key: string): T[] {
@@ -29,7 +28,6 @@ function generateId(): string {
 
 export const useLogsStore = defineStore('logs', () => {
   const traceLogs = ref<TraceLog[]>(load<TraceLog>(TRACE_KEY))
-  const generationHistory = ref<GenerationHistory[]>(load<GenerationHistory>(GENERATION_KEY))
 
   function addTraceLog(entry: Omit<TraceLog, 'id' | 'timestamp'>) {
     const item: TraceLog = {
@@ -44,35 +42,14 @@ export const useLogsStore = defineStore('logs', () => {
     save(TRACE_KEY, traceLogs.value)
   }
 
-  function addGeneration(entry: Omit<GenerationHistory, 'id' | 'timestamp'>) {
-    const item: GenerationHistory = {
-      ...entry,
-      id: generateId(),
-      timestamp: new Date().toISOString(),
-    }
-    generationHistory.value.unshift(item)
-    if (generationHistory.value.length > MAX_ITEMS) {
-      generationHistory.value = generationHistory.value.slice(0, MAX_ITEMS)
-    }
-    save(GENERATION_KEY, generationHistory.value)
-  }
-
   function clearTraceLogs() {
     traceLogs.value = []
     localStorage.removeItem(TRACE_KEY)
   }
 
-  function clearGenerationHistory() {
-    generationHistory.value = []
-    localStorage.removeItem(GENERATION_KEY)
-  }
-
   return {
     traceLogs,
-    generationHistory,
     addTraceLog,
-    addGeneration,
     clearTraceLogs,
-    clearGenerationHistory,
   }
 })

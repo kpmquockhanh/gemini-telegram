@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,21 @@ type TemplateEntry struct {
 	ImagePrompt string `json:"imagePrompt"`
 	VideoPrompt string `json:"videoPrompt"`
 	CreatedAt   string `json:"createdAt"`
+}
+
+// GenerationHistoryEntry holds a record of an image/video generation request.
+type GenerationHistoryEntry struct {
+	ID         int64  `json:"id"`
+	ChatID     int64  `json:"chatId"`
+	JobType    string `json:"jobType"`
+	Prompt     string `json:"prompt"`
+	Provider   string `json:"provider"`
+	ModelName  string `json:"modelName"`
+	Status     string `json:"status"`
+	Params     string `json:"params"`
+	Result     string `json:"result"`
+	DurationMs int64  `json:"durationMs"`
+	CreatedAt  string `json:"createdAt"`
 }
 
 // NewPromptStore opens (or creates) the SQLite database at the given path.
@@ -82,6 +98,20 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
     video_prompt TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS generation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER,
+    job_type TEXT NOT NULL,
+    prompt TEXT,
+    provider TEXT,
+    model_name TEXT,
+    status TEXT NOT NULL,
+    params TEXT,
+    result TEXT,
+    duration_ms INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_generation_history_created_at ON generation_history(created_at);
 `
 	_, err := s.db.Exec(schema)
 	if err != nil {
@@ -386,6 +416,106 @@ func (s *PromptStore) UpdateTemplate(id int64, name, description, imagePrompt, v
 // DeleteTemplate removes a template.
 func (s *PromptStore) DeleteTemplate(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM prompt_templates WHERE id = ?`, id)
+	return err
+}
+
+// CreateGenerationHistory adds a new generation history record.
+func (s *PromptStore) CreateGenerationHistory(chatID int64, jobType, prompt, provider, modelName, status string, params, result map[string]any, durationMs int64) (int64, error) {
+	var paramsJSON, resultJSON []byte
+	var err error
+
+	if params != nil {
+		paramsJSON, err = json.Marshal(params)
+		if err != nil {
+			paramsJSON = []byte("{}")
+		}
+	}
+	if result != nil {
+		resultJSON, err = json.Marshal(result)
+		if err != nil {
+			resultJSON = []byte("{}")
+		}
+	}
+
+	res, err := s.db.Exec(`
+		INSERT INTO generation_history (chat_id, job_type, prompt, provider, model_name, status, params, result, duration_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, chatID, jobType, prompt, provider, modelName, status, string(paramsJSON), string(resultJSON), durationMs)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// ListGenerationHistory returns a paginated list of generation history entries.
+func (s *PromptStore) ListGenerationHistory(offset, limit int, statusFilter, search string) ([]GenerationHistoryEntry, int, error) {
+	whereClause := ""
+	args := []any{}
+
+	if statusFilter != "" && statusFilter != "all" {
+		whereClause = "WHERE status = ?"
+		args = append(args, statusFilter)
+	}
+	if search != "" {
+		if whereClause != "" {
+			whereClause += " AND (prompt LIKE ? OR provider LIKE ? OR model_name LIKE ?)"
+		} else {
+			whereClause = "WHERE prompt LIKE ? OR provider LIKE ? OR model_name LIKE ?"
+		}
+		pattern := "%" + search + "%"
+		args = append(args, pattern, pattern, pattern)
+	}
+
+	var total int
+	countQuery := "SELECT COUNT(*) FROM generation_history " + whereClause
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `
+		SELECT id, chat_id, job_type, prompt, provider, model_name, status, params, result, duration_ms, created_at
+		FROM generation_history
+	` + whereClause + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var entries []GenerationHistoryEntry
+	for rows.Next() {
+		var entry GenerationHistoryEntry
+		var provider, modelName, paramsStr, resultStr sql.NullString
+		var durationMs sql.NullInt64
+		if err := rows.Scan(&entry.ID, &entry.ChatID, &entry.JobType, &entry.Prompt, &provider, &modelName, &entry.Status, &paramsStr, &resultStr, &durationMs, &entry.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		if provider.Valid {
+			entry.Provider = provider.String
+		}
+		if modelName.Valid {
+			entry.ModelName = modelName.String
+		}
+		if paramsStr.Valid {
+			entry.Params = paramsStr.String
+		}
+		if resultStr.Valid {
+			entry.Result = resultStr.String
+		}
+		if durationMs.Valid {
+			entry.DurationMs = durationMs.Int64
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, total, nil
+}
+
+// ClearGenerationHistory removes all generation history records.
+func (s *PromptStore) ClearGenerationHistory() error {
+	_, err := s.db.Exec(`DELETE FROM generation_history`)
 	return err
 }
 

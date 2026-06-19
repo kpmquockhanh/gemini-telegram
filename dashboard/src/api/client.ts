@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Prompt, PromptListResponse, PromptFormData, Template, TemplateFormData, Stats, ProvidersResponse } from '@/types'
+import type { Prompt, PromptListResponse, PromptFormData, Template, TemplateFormData, Stats, ProvidersResponse, GenerationHistoryListResponse } from '@/types'
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -41,3 +41,10 @@ export const updateTemplate = (id: number, data: TemplateFormData): Promise<{ me
 
 export const deleteTemplate = (id: number): Promise<{ message: string }> =>
   client.delete(`/templates/${id}`).then((r) => r.data)
+
+// Generation History
+export const listGenerationHistory = (page = 1, limit = 20, status = 'all', search = ''): Promise<GenerationHistoryListResponse> =>
+  client.get('/generations', { params: { page, limit, status, search } }).then((r) => r.data)
+
+export const clearGenerationHistory = (): Promise<{ message: string }> =>
+  client.delete('/generations').then((r) => r.data)

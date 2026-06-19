@@ -16,6 +16,7 @@ import (
 	"gemini-telegram-bot/ai"
 	"gemini-telegram-bot/ai/providers/gemini"
 	"gemini-telegram-bot/ai/providers/kling"
+	"gemini-telegram-bot/ai/providers/recraft"
 	"gemini-telegram-bot/storage"
 	"gemini-telegram-bot/worker"
 )
@@ -62,6 +63,11 @@ func main() {
 	if config.KlingAPIKey != "" {
 		klingClient := kling.NewClient(config.KlingAPIKey)
 		providers.Register(klingClient)
+	}
+
+	if config.RecraftAPIKey != "" {
+		recraftClient := recraft.NewClient(config.RecraftAPIKey)
+		providers.Register(recraftClient)
 	}
 
 	store, err := storage.NewPromptStore(config.DatabasePath)
@@ -228,7 +234,7 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		args := strings.TrimSpace(strings.TrimPrefix(text, "/set-provider"))
 		parts := strings.Fields(args)
 		if len(parts) < 2 {
-			app.bot.SendMessage(chatID, "Usage: /set-provider <provider> <model>\nAvailable providers: gemini, kling\nExample: /set-provider gemini gemini-3.1-flash-image")
+			app.bot.SendMessage(chatID, "Usage: /set-provider <provider> <model>\nAvailable providers: gemini, kling, recraft\nExample: /set-provider gemini gemini-3.1-flash-image")
 			return
 		}
 		providerName := parts[0]
@@ -316,8 +322,12 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 				app.bot.SendErrorMessage(chatID, "image")
 				return
 			}
-			app.bot.SendSuccessMessage(chatID, msgID, "image")
-			if err := app.bot.SendPhoto(chatID, result.Data, prompt); err != nil {
+			app.bot.SendSuccessMessage(chatID, msgID, "image", result.ProviderName, result.ModelName)
+			caption := prompt
+			if result.ProviderName != "" && result.ModelName != "" {
+				caption = fmt.Sprintf("%s\n\n🤖 `%s` | `%s`", prompt, result.ProviderName, result.ModelName)
+			}
+			if err := app.bot.SendPhoto(chatID, result.Data, caption); err != nil {
 				slog.Error("failed to send photo", "error", err)
 				app.bot.SendErrorMessage(chatID, "image")
 			}
@@ -380,8 +390,12 @@ func (app *App) handleWebhook(w http.ResponseWriter, r *http.Request) {
 				app.bot.SendErrorMessage(chatID, "video")
 				return
 			}
-			app.bot.SendSuccessMessage(chatID, msgID, "video")
-			if err := app.bot.SendVideo(chatID, result.Data); err != nil {
+			app.bot.SendSuccessMessage(chatID, msgID, "video", result.ProviderName, result.ModelName)
+			caption := ""
+			if result.ProviderName != "" && result.ModelName != "" {
+				caption = fmt.Sprintf("🤖 `%s` | `%s`", result.ProviderName, result.ModelName)
+			}
+			if err := app.bot.SendVideo(chatID, result.Data, caption); err != nil {
 				slog.Error("failed to send video", "error", err)
 				app.bot.SendErrorMessage(chatID, "video")
 			}
@@ -425,14 +439,14 @@ func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 		if err != nil {
 			return worker.Result{Error: err}
 		}
-		return worker.Result{Data: data}
+		return worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 
 	case worker.JobTypeVideo:
 		data, err := provider.GenerateVideo(ctx, job.Prompt, job.ImageData, job.MimeType, opts)
 		if err != nil {
 			return worker.Result{Error: err}
 		}
-		return worker.Result{Data: data}
+		return worker.Result{Data: data, ProviderName: providerName, ModelName: modelName}
 
 	default:
 		return worker.Result{Error: fmt.Errorf("unknown job type: %s", job.Type)}

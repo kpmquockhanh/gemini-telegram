@@ -51,3 +51,21 @@ export interface Stats {
   templateCount: number
   totalPrompts: number
 }
+
+export interface TraceLog {
+  id: string
+  timestamp: string
+  level: 'info' | 'warn' | 'error'
+  message: string
+  context?: Record<string, unknown>
+}
+
+export interface GenerationHistory {
+  id: string
+  timestamp: string
+  operation: string
+  status: 'success' | 'error'
+  params?: Record<string, unknown>
+  result?: unknown
+  durationMs?: number
+}

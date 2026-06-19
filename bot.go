@@ -94,8 +94,45 @@ func (b *BotClient) EditMessageText(chatID int64, messageID int, text string) er
 	return nil
 }
 
+// detectImageFormat returns the file extension based on magic bytes.
+func detectImageFormat(data []byte) string {
+	if len(data) < 4 {
+		return "bin"
+	}
+	switch {
+	case len(data) >= 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47:
+		return "png"
+	case data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "jpg"
+	case len(data) >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
+		data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50:
+		return "webp"
+	case data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46:
+		return "gif"
+	case data[0] == 0x42 && data[1] == 0x4D:
+		return "bmp"
+	default:
+		return "bin"
+	}
+}
+
 // SendPhoto sends a photo to a chat.
 func (b *BotClient) SendPhoto(chatID int64, imageData []byte, caption string) error {
+	if len(imageData) == 0 {
+		return fmt.Errorf("image data is empty")
+	}
+
+	// Telegram photo limit is 10 MB.
+	const maxPhotoSize = 10 * 1024 * 1024
+	if len(imageData) > maxPhotoSize {
+		return fmt.Errorf("image too large: %d bytes (max %d)", len(imageData), maxPhotoSize)
+	}
+
+	ext := detectImageFormat(imageData)
+	filename := fmt.Sprintf("image.%s", ext)
+
+	slog.Info("sending photo to telegram", "chat_id", chatID, "size", len(imageData), "format", ext)
+
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -104,7 +141,7 @@ func (b *BotClient) SendPhoto(chatID int64, imageData []byte, caption string) er
 		_ = writer.WriteField("caption", caption)
 	}
 
-	part, err := writer.CreateFormFile("photo", "image.png")
+	part, err := writer.CreateFormFile("photo", filename)
 	if err != nil {
 		return err
 	}
@@ -133,11 +170,26 @@ func (b *BotClient) SendPhoto(chatID int64, imageData []byte, caption string) er
 }
 
 // SendVideo sends a video to a chat.
-func (b *BotClient) SendVideo(chatID int64, videoData []byte) error {
+func (b *BotClient) SendVideo(chatID int64, videoData []byte, caption string) error {
+	if len(videoData) == 0 {
+		return fmt.Errorf("video data is empty")
+	}
+
+	// Telegram video limit is 50 MB for bots.
+	const maxVideoSize = 50 * 1024 * 1024
+	if len(videoData) > maxVideoSize {
+		return fmt.Errorf("video too large: %d bytes (max %d)", len(videoData), maxVideoSize)
+	}
+
+	slog.Info("sending video to telegram", "chat_id", chatID, "size", len(videoData))
+
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
 	_ = writer.WriteField("chat_id", strconv.FormatInt(chatID, 10))
+	if caption != "" {
+		_ = writer.WriteField("caption", caption)
+	}
 
 	part, err := writer.CreateFormFile("video", "video.mp4")
 	if err != nil {
@@ -241,7 +293,7 @@ func (b *BotClient) SendErrorMessage(chatID int64, jobType string) error {
 }
 
 // SendSuccessMessage sends a success placeholder (used before sending media).
-func (b *BotClient) SendSuccessMessage(chatID int64, messageID int, jobType string) error {
+func (b *BotClient) SendSuccessMessage(chatID int64, messageID int, jobType string, provider string, model string) error {
 	var icon string
 	var noun string
 	if jobType == "image" {
@@ -252,6 +304,11 @@ func (b *BotClient) SendSuccessMessage(chatID int64, messageID int, jobType stri
 		noun = "Video"
 	}
 
-	text := fmt.Sprintf("%s **%s generated!** Sending now...", icon, noun)
+	var info string
+	if provider != "" && model != "" {
+		info = fmt.Sprintf("\n🤖 `%s` | ` %s`", provider, model)
+	}
+
+	text := fmt.Sprintf("%s **%s generated!** Sending now...%s", icon, noun, info)
 	return b.EditMessageText(chatID, messageID, text)
 }

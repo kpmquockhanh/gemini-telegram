@@ -1,4 +1,4 @@
-.PHONY: dev build stop logs clean
+.PHONY: dev build build-armv7 stop logs clean
 
 # Start development environment
 up:
@@ -57,6 +57,10 @@ shell-api:
 # Enter dashboard container shell
 shell-dashboard:
 	docker-compose -f docker-compose.dev.yml exec dashboard sh
+
+# Build binary for ARMv7 (e.g., Raspberry Pi)
+build-armv7:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o bot-armv7 .
 
 # Run tests in container
 test:

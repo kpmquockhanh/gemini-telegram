@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -116,10 +117,28 @@ func (app *App) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get existing entry before update to detect changes
+	oldEntry, _ := app.storage.GetPrompts(chatID)
+
 	if err := app.storage.UpdatePrompts(chatID, req.TemplateID, req.Provider, req.ModelName); err != nil {
 		slog.Error("failed to update prompt", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update prompt")
 		return
+	}
+
+	// Notify user on Telegram if provider or model changed
+	if oldEntry == nil || oldEntry.Provider != req.Provider || oldEntry.ModelName != req.ModelName {
+		var msg string
+		if req.Provider != "" && req.ModelName != "" {
+			msg = fmt.Sprintf("✅ AI model updated!\n🤖 Provider: `%s`\n📦 Model: `%s`", req.Provider, req.ModelName)
+		} else if req.Provider != "" {
+			msg = fmt.Sprintf("✅ AI provider updated to `%s`", req.Provider)
+		}
+		if msg != "" {
+			if _, err := app.bot.SendMessage(chatID, msg); err != nil {
+				slog.Error("failed to send model change notification", "chat_id", chatID, "error", err)
+			}
+		}
 	}
 
 	// Get updated entry to return resolved template name

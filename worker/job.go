@@ -33,8 +33,10 @@ type Job struct {
 
 // Result holds the outcome of a job.
 type Result struct {
-	Data  []byte
-	Error error
+	Data         []byte
+	Error        error
+	ProviderName string
+	ModelName    string
 }
 
 // NewJob creates a new Job with the given parameters.

@@ -12,6 +12,7 @@ type Config struct {
 	BotToken       string
 	GeminiAPIKey   string
 	KlingAPIKey    string
+	RecraftAPIKey  string
 	Port           string
 	WorkerPoolSize int
 	DatabasePath   string
@@ -35,6 +36,7 @@ func LoadConfig() *Config {
 		BotToken:       os.Getenv("BOT_TOKEN"),
 		GeminiAPIKey:   os.Getenv("GEMINI_API_KEY"),
 		KlingAPIKey:    os.Getenv("KLING_API_KEY"),
+		RecraftAPIKey:  os.Getenv("RECRAFT_API_KEY"),
 		Port:           port,
 		WorkerPoolSize: workerPoolSize,
 		DatabasePath:   databasePath,

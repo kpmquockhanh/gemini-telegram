@@ -7,6 +7,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   RobotOutlined,
+  BugOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { computed } from 'vue'
@@ -18,6 +20,8 @@ const menuItems = [
   { key: '/', icon: DashboardOutlined, label: 'Dashboard' },
   { key: '/prompts', icon: MessageOutlined, label: 'Prompts' },
   { key: '/templates', icon: FileTextOutlined, label: 'Templates' },
+  { key: '/logs', icon: BugOutlined, label: 'Trace Logs' },
+  { key: '/generations', icon: HistoryOutlined, label: 'Generations' },
 ]
 
 const pageTitle = computed(() => {
@@ -25,6 +29,8 @@ const pageTitle = computed(() => {
     '/': 'Dashboard',
     '/prompts': 'Prompts',
     '/templates': 'Templates',
+    '/logs': 'Trace Logs',
+    '/generations': 'Generation History',
   }
   return map[route.path] || 'Dashboard'
 })

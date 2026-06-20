@@ -1,6 +1,8 @@
 package recraft
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +10,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"gemini-telegram-bot/ai"
 )
 
 const baseURL = "https://external.api.recraft.ai/v1"
@@ -51,6 +55,78 @@ func (c *Client) GetModels() []string {
 		"recraftv2",
 		"recraftv2_vector",
 	}
+}
+
+// GetModelParams returns configurable parameters for a Recraft model.
+func (c *Client) GetModelParams(modelName string) []ai.ModelParamDef {
+	switch modelName {
+	case "recraftv3", "recraftv3_vector":
+		min := 0.0
+		max := 1.0
+		step := 0.1
+		return []ai.ModelParamDef{
+			{
+				Name:    "strength",
+				Label:   "Strength",
+				Type:    "slider",
+				Default: 0.5,
+				Min:     &min,
+				Max:     &max,
+				Step:    &step,
+			},
+		}
+	default:
+		return nil
+	}
+}
+
+// enhancePromptResponse is the JSON shape returned by the prompt enhance endpoint.
+type enhancePromptResponse struct {
+	EnhancedPrompt string `json:"enhanced_prompt"`
+}
+
+// enhancePrompt calls the Recraft prompt enhancement API to expand a short prompt
+// into a richer description with visual context, style cues, and composition details.
+// On failure, it returns the original prompt unchanged.
+func (c *Client) enhancePrompt(ctx context.Context, prompt string) string {
+	if len(prompt) > 2000 {
+		slog.Warn("recraft enhance prompt skipped: prompt exceeds 2000 characters")
+		return prompt
+	}
+
+	body := map[string]string{"prompt": prompt}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		slog.Warn("recraft enhance prompt marshal failed", "error", err)
+		return prompt
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/prompts/enhance", bytes.NewReader(jsonBody))
+	if err != nil {
+		slog.Warn("recraft enhance prompt create request failed", "error", err)
+		return prompt
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	raw, err := c.doRequest(req)
+	if err != nil {
+		slog.Warn("recraft enhance prompt request failed, using original", "error", err)
+		return prompt
+	}
+
+	var resp enhancePromptResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		slog.Warn("recraft enhance prompt unmarshal failed", "error", err)
+		return prompt
+	}
+
+	if resp.EnhancedPrompt == "" {
+		slog.Warn("recraft enhance prompt returned empty, using original")
+		return prompt
+	}
+
+	slog.Info("recraft prompt enhanced", "original_len", len(prompt), "enhanced_len", len(resp.EnhancedPrompt))
+	return resp.EnhancedPrompt
 }
 
 // doRequest performs an HTTP request with Bearer auth and returns the response body.

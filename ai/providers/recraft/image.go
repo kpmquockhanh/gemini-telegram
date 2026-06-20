@@ -16,10 +16,11 @@ import (
 // GenerateImage creates an image using Recraft AI.
 // If imageData is provided, it uses the image-to-image endpoint; otherwise text-to-image.
 func (c *Client) GenerateImage(ctx context.Context, prompt string, imageData []byte, mimeType string, opts ai.GenerateOptions) ([]byte, error) {
+	enhanced := c.enhancePrompt(ctx, prompt)
 	if imageData != nil && len(imageData) > 0 {
-		return c.generateImageToImage(ctx, prompt, imageData, mimeType, opts)
+		return c.generateImageToImage(ctx, enhanced, imageData, mimeType, opts)
 	}
-	return c.generateTextToImage(ctx, prompt, opts)
+	return c.generateTextToImage(ctx, enhanced, opts)
 }
 
 // GenerateVideo returns an error because Recraft does not support video generation.
@@ -100,7 +101,7 @@ func (c *Client) generateImageToImage(ctx context.Context, prompt string, imageD
 	}
 
 	writeMultipartField(writer, "prompt", prompt)
-	writeMultipartField(writer, "strength", "0.5")
+	writeMultipartField(writer, "strength", fmt.Sprintf("%.1f", strengthFromOpts(opts)))
 	writeMultipartField(writer, "model", modelName)
 	writeMultipartField(writer, "response_format", "b64_json")
 
@@ -131,4 +132,30 @@ func (c *Client) generateImageToImage(ctx context.Context, prompt string, imageD
 
 	slog.Info("recraft image-to-image generated successfully", "size", len(data))
 	return data, nil
+}
+
+func strengthFromOpts(opts ai.GenerateOptions) float64 {
+	if opts.Params == nil {
+		return 0.5
+	}
+	v, ok := opts.Params["strength"]
+	if !ok {
+		return 0.5
+	}
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case json.Number:
+		f, _ := val.Float64()
+		if f > 0 {
+			return f
+		}
+		return 0.5
+	default:
+		return 0.5
+	}
 }

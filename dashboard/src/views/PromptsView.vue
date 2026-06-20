@@ -10,13 +10,13 @@ import {
   SearchOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
-import type { Prompt, PromptFormData, ProvidersResponse } from '@/types'
+import type { Prompt, PromptFormData, ProvidersResponse, ModelParamDef } from '@/types'
 
 const promptsStore = usePromptsStore()
 const templatesStore = useTemplatesStore()
 
 const editModalVisible = ref(false)
-const editForm = ref<PromptFormData>({ templateId: null, provider: '', modelName: '' })
+const editForm = ref<PromptFormData>({ templateId: null, provider: '', modelName: '', params: {} })
 const currentChatId = ref<number | null>(null)
 const selectedTemplate = ref<number | null>(null)
 
@@ -43,7 +43,27 @@ async function loadProviders() {
 
 function getAvailableModels(providerName: string): string[] {
   if (!providers.value || !providers.value.providers[providerName]) return []
-  return providers.value.providers[providerName].models
+  return providers.value.providers[providerName].models.map((m) => m.name)
+}
+
+function getModelParams(providerName: string, modelName: string): ModelParamDef[] {
+  if (!providers.value || !providerName || !modelName) return []
+  const provider = providers.value.providers[providerName]
+  if (!provider) return []
+  const model = provider.models.find((m) => m.name === modelName)
+  return model?.params || []
+}
+
+function getParamDefault(def: ModelParamDef): unknown {
+  return def.default
+}
+
+function onModelChange() {
+  const defaults: Record<string, unknown> = {}
+  for (const param of getModelParams(editForm.value.provider, editForm.value.modelName)) {
+    defaults[param.name] = param.default
+  }
+  editForm.value.params = defaults
 }
 
 function handleSearch() {
@@ -57,10 +77,19 @@ function handlePageChange(page: number, pageSize: number) {
 
 function openEditModal(record: Prompt) {
   currentChatId.value = record.chatId
+  let params: Record<string, unknown> = {}
+  if (record.params) {
+    try {
+      params = JSON.parse(record.params)
+    } catch {
+      params = {}
+    }
+  }
   editForm.value = {
     templateId: record.templateId || null,
     provider: record.provider || providers.value?.default || '',
     modelName: record.modelName || '',
+    params,
   }
   selectedTemplate.value = record.templateId || null
   editModalVisible.value = true
@@ -224,7 +253,7 @@ function getTemplateName(templateId: number | null): string {
             v-model:value="editForm.provider"
             placeholder="Select a provider"
             style="width: 100%"
-            @change="editForm.modelName = ''"
+            @change="editForm.modelName = ''; editForm.params = {}"
           >
             <a-select-option
               v-for="(info, key) in providers?.providers"
@@ -242,6 +271,7 @@ function getTemplateName(templateId: number | null): string {
             placeholder="Select a model"
             style="width: 100%"
             :disabled="!editForm.provider"
+            @change="onModelChange"
           >
             <a-select-option
               v-for="model in getAvailableModels(editForm.provider)"
@@ -249,6 +279,44 @@ function getTemplateName(templateId: number | null): string {
               :value="model"
             >
               {{ model }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <a-form-item
+          v-for="param in getModelParams(editForm.provider, editForm.modelName)"
+          :key="param.name"
+          :label="param.label"
+        >
+          <a-slider
+            v-if="param.type === 'slider'"
+            :min="param.min ?? 0"
+            :max="param.max ?? 1"
+            :step="param.step ?? 0.1"
+            :value="(editForm.params[param.name] as number) ?? (param.default as number)"
+            @change="(v: number) => editForm.params[param.name] = v"
+          />
+          <a-input-number
+            v-else-if="param.type === 'number'"
+            :min="param.min ?? undefined"
+            :max="param.max ?? undefined"
+            :step="param.step ?? 1"
+            :value="(editForm.params[param.name] as number) ?? (param.default as number)"
+            style="width: 100%"
+            @change="(v: number | null) => { if (v !== null) editForm.params[param.name] = v }"
+          />
+          <a-select
+            v-else-if="param.type === 'select'"
+            :value="(editForm.params[param.name] as string) ?? (param.default as string)"
+            style="width: 100%"
+            @change="(v: string) => editForm.params[param.name] = v"
+          >
+            <a-select-option
+              v-for="opt in param.options"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
             </a-select-option>
           </a-select>
         </a-form-item>

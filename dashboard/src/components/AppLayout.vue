@@ -7,8 +7,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   RobotOutlined,
-  BugOutlined,
   HistoryOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons-vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { computed } from 'vue'
@@ -20,8 +20,8 @@ const menuItems = [
   { key: '/', icon: DashboardOutlined, label: 'Dashboard' },
   { key: '/prompts', icon: MessageOutlined, label: 'Prompts' },
   { key: '/templates', icon: FileTextOutlined, label: 'Templates' },
-  { key: '/logs', icon: BugOutlined, label: 'Trace Logs' },
   { key: '/generations', icon: HistoryOutlined, label: 'Generations' },
+  { key: '/playground', icon: ExperimentOutlined, label: 'Playground' },
 ]
 
 const pageTitle = computed(() => {
@@ -29,8 +29,8 @@ const pageTitle = computed(() => {
     '/': 'Dashboard',
     '/prompts': 'Prompts',
     '/templates': 'Templates',
-    '/logs': 'Trace Logs',
     '/generations': 'Generation History',
+    '/playground': 'Playground',
   }
   return map[route.path] || 'Dashboard'
 })
@@ -95,7 +95,7 @@ const pageTitle = computed(() => {
 
 <style scoped>
 .app-layout {
-  min-height: 100vh;
+  height: 100vh;
   background: #F8FAFC;
 }
 
@@ -103,6 +103,21 @@ const pageTitle = computed(() => {
   background: #FFFFFF !important;
   border-right: 1px solid #E2E8F0;
   z-index: 10;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 2px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .logo {
@@ -235,6 +250,7 @@ const pageTitle = computed(() => {
 .content-wrapper {
   padding: 0;
   background: transparent;
+  overflow-y: auto;
 }
 
 .content {
@@ -242,7 +258,6 @@ const pageTitle = computed(() => {
   padding: 24px;
   background: #FFFFFF;
   border-radius: 16px;
-  min-height: calc(100vh - 112px);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
   border: 1px solid #E2E8F0;
 }

@@ -411,13 +411,14 @@ func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 	start := time.Now()
 
 	// Get provider and model from storage for this chat.
-	var providerName, modelName string
+	var providerName, modelName, paramsJSON string
 	entry, err := app.storage.GetPrompts(job.ChatID)
 	if err != nil {
 		slog.Error("failed to get prompts for provider selection", "error", err)
 	} else if entry != nil {
 		providerName = entry.Provider
 		modelName = entry.ModelName
+		paramsJSON = entry.Params
 	}
 
 	// Fallback to default provider.
@@ -428,12 +429,18 @@ func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 	provider := app.providers.Get(providerName)
 	if provider == nil {
 		result := worker.Result{Error: fmt.Errorf("provider not found: %s", providerName)}
-		app.recordGenerationHistory(job, providerName, modelName, result, start)
+		app.recordGenerationHistory(job, providerName, modelName, nil, result, start)
 		return result
+	}
+
+	var params map[string]any
+	if paramsJSON != "" {
+		json.Unmarshal([]byte(paramsJSON), &params)
 	}
 
 	opts := ai.GenerateOptions{
 		ModelName: modelName,
+		Params:    params,
 	}
 
 	var result worker.Result
@@ -458,11 +465,11 @@ func (app *App) handleJob(ctx context.Context, job worker.Job) worker.Result {
 		result = worker.Result{Error: fmt.Errorf("unknown job type: %s", job.Type)}
 	}
 
-	app.recordGenerationHistory(job, providerName, modelName, result, start)
+	app.recordGenerationHistory(job, providerName, modelName, params, result, start)
 	return result
 }
 
-func (app *App) recordGenerationHistory(job worker.Job, providerName, modelName string, result worker.Result, start time.Time) {
+func (app *App) recordGenerationHistory(job worker.Job, providerName, modelName string, modelParams map[string]any, result worker.Result, start time.Time) {
 	durationMs := time.Since(start).Milliseconds()
 	status := "success"
 	resultMap := map[string]any{}
@@ -482,6 +489,9 @@ func (app *App) recordGenerationHistory(job worker.Job, providerName, modelName 
 	if len(job.ImageData) > 0 {
 		params["hasReferenceImage"] = true
 		params["referenceImageSize"] = len(job.ImageData)
+	}
+	for k, v := range modelParams {
+		params[k] = v
 	}
 
 	_, err := app.storage.CreateGenerationHistory(

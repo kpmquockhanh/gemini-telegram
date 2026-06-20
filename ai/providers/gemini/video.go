@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -27,7 +28,7 @@ func (c *Client) GenerateVideo(ctx context.Context, prompt string, imageData []b
 	}
 
 	config := &genai.GenerateVideosConfig{
-		DurationSeconds: genai.Ptr(int32(4)),
+		DurationSeconds: genai.Ptr(durationFromOpts(opts)),
 	}
 
 	modelName := opts.ModelName
@@ -75,4 +76,32 @@ func (c *Client) GenerateVideo(ctx context.Context, prompt string, imageData []b
 
 	slog.Info("video downloaded successfully", "size", len(data))
 	return data, nil
+}
+
+func durationFromOpts(opts ai.GenerateOptions) int32 {
+	if opts.Params == nil {
+		return 4
+	}
+	v, ok := opts.Params["duration"]
+	if !ok {
+		return 4
+	}
+	switch val := v.(type) {
+	case float64:
+		return int32(val)
+	case float32:
+		return int32(val)
+	case int:
+		return int32(val)
+	case int32:
+		return val
+	case json.Number:
+		i, _ := val.Int64()
+		if i >= 4 && i <= 8 {
+			return int32(i)
+		}
+		return 4
+	default:
+		return 4
+	}
 }

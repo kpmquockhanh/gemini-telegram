@@ -20,7 +20,7 @@ const searchText = ref('')
 const statusFilter = ref<'all' | 'success' | 'error'>('all')
 const expandedRows = ref<Set<string>>(new Set())
 
-const filteredHistory = computed(() => history.value)
+const filteredHistory = computed(() => history.value ?? [])
 
 async function fetchHistory() {
   loading.value = true
@@ -231,14 +231,12 @@ fetchHistory()
         :total="total"
         :page-size-options="['10', '20', '50', '100']"
         show-size-changer
-        show-total
-        :total-text="(total: number) => `Total ${total} items`"
+        :show-total="(total: number, range: [number, number]) => `Total ${total} items`"
         @change="onPageChange"
         @show-size-change="onShowSizeChange"
       />
     </div>
 
-    <a-empty v-if="filteredHistory.length === 0 && !loading" description="No generation history found" class="empty-state" />
   </div>
 </template>
 
@@ -378,10 +376,6 @@ fetchHistory()
 .empty-text {
   color: #94a3b8;
   font-style: italic;
-}
-
-.empty-state {
-  margin-top: 48px;
 }
 
 .pagination-bar {

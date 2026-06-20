@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -8,6 +10,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"gemini-telegram-bot/ai"
 )
 
 // --- API Response Helpers ---
@@ -108,9 +113,10 @@ func (app *App) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		TemplateID int64  `json:"templateId"`
-		Provider   string `json:"provider"`
-		ModelName  string `json:"modelName"`
+		TemplateID int64             `json:"templateId"`
+		Provider   string            `json:"provider"`
+		ModelName  string            `json:"modelName"`
+		Params     map[string]any    `json:"params"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -120,7 +126,15 @@ func (app *App) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	// Get existing entry before update to detect changes
 	oldEntry, _ := app.storage.GetPrompts(chatID)
 
-	if err := app.storage.UpdatePrompts(chatID, req.TemplateID, req.Provider, req.ModelName); err != nil {
+	var paramsJSON string
+	if req.Params != nil {
+		b, err := json.Marshal(req.Params)
+		if err == nil {
+			paramsJSON = string(b)
+		}
+	}
+
+	if err := app.storage.UpdatePrompts(chatID, req.TemplateID, req.Provider, req.ModelName, paramsJSON); err != nil {
 		slog.Error("failed to update prompt", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update prompt")
 		return
@@ -283,6 +297,107 @@ func (app *App) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "deleted"})
 }
 
+// --- Generate Handler ---
+
+func (app *App) handleGenerate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type             string         `json:"type"`
+		Prompt           string         `json:"prompt"`
+		Provider         string         `json:"provider"`
+		ModelName        string         `json:"modelName"`
+		Params           map[string]any `json:"params"`
+		ReferenceImage   string         `json:"referenceImage"`
+		ReferenceMimeType string        `json:"referenceMimeType"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.Prompt) == "" {
+		writeError(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	if req.Type != "image" && req.Type != "video" {
+		writeError(w, http.StatusBadRequest, "type must be 'image' or 'video'")
+		return
+	}
+
+	providerName := req.Provider
+	if providerName == "" {
+		providerName = app.providers.GetDefault()
+	}
+
+	provider := app.providers.Get(providerName)
+	if provider == nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("provider not found: %s", providerName))
+		return
+	}
+
+	modelName := req.ModelName
+	if modelName == "" {
+		models := provider.GetModels()
+		if len(models) > 0 {
+			modelName = models[0]
+		}
+	}
+
+	opts := ai.GenerateOptions{
+		ModelName: modelName,
+		Params:    req.Params,
+	}
+
+	var refData []byte
+	var refMime string
+	if req.ReferenceImage != "" {
+		decoded, err := base64.StdEncoding.DecodeString(req.ReferenceImage)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid reference image base64")
+			return
+		}
+		refData = decoded
+		refMime = req.ReferenceMimeType
+		if refMime == "" {
+			refMime = "image/jpeg"
+		}
+	}
+
+	start := time.Now()
+	ctx := context.Background()
+
+	var data []byte
+	var mimeType string
+	var err error
+
+	switch req.Type {
+	case "image":
+		data, err = provider.GenerateImage(ctx, req.Prompt, refData, refMime, opts)
+		mimeType = "image/png"
+	case "video":
+		data, err = provider.GenerateVideo(ctx, req.Prompt, refData, refMime, opts)
+		mimeType = "video/mp4"
+	}
+
+	durationMs := time.Since(start).Milliseconds()
+
+	if err != nil {
+		slog.Error("generation failed", "type", req.Type, "provider", providerName, "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":      err.Error(),
+			"durationMs": durationMs,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data":         base64.StdEncoding.EncodeToString(data),
+		"mimeType":     mimeType,
+		"providerName": providerName,
+		"modelName":    modelName,
+		"durationMs":   durationMs,
+	})
+}
+
 // --- SPA Handler ---
 
 func (app *App) handleSPA(w http.ResponseWriter, r *http.Request) {
@@ -423,6 +538,9 @@ func (app *App) setupAPIRoutes(mux *http.ServeMux) {
 	// Generation History
 	mux.HandleFunc("GET /api/generations", withCORS(app.handleListGenerationHistory))
 	mux.HandleFunc("DELETE /api/generations", withCORS(app.handleClearGenerationHistory))
+
+	// Generation
+	mux.HandleFunc("POST /api/generate", withCORS(app.handleGenerate))
 
 	// Health check
 	mux.HandleFunc("GET /health", withCORS(app.handleHealth))

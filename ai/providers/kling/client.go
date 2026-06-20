@@ -32,6 +32,11 @@ func (c *Client) GetModels() []string {
 	}
 }
 
+// GetModelParams returns configurable parameters for a Kling model.
+func (c *Client) GetModelParams(modelName string) []ai.ModelParamDef {
+	return nil
+}
+
 // GenerateImage creates an image using Kling AI.
 // Note: Kling AI primarily focuses on video generation. For image generation,
 // this uses the Kling AI image generation API if available.

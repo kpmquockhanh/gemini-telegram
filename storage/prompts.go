@@ -23,6 +23,7 @@ type PromptEntry struct {
 	TemplateName string `json:"templateName"`
 	Provider     string `json:"provider"`
 	ModelName    string `json:"modelName"`
+	Params       string `json:"params"`
 	UpdatedAt    string `json:"updatedAt"`
 }
 
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS default_prompts (
     template_id INTEGER,
     provider TEXT,
     model_name TEXT,
+    params TEXT DEFAULT '{}',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (template_id) REFERENCES prompt_templates(id)
 );
@@ -122,6 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_generation_history_created_at ON generation_histo
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN template_id INTEGER`)
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN provider TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN model_name TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN params TEXT DEFAULT '{}'`)
 
 	// Migrate old columns to new template-based system
 	_, _ = s.db.Exec(`ALTER TABLE default_prompts ADD COLUMN image_prompt TEXT`)
@@ -187,7 +190,7 @@ func (s *PromptStore) migrateOldPrompts() error {
 // GetPrompts retrieves the prompt settings for a chat (with resolved template name).
 func (s *PromptStore) GetPrompts(chatID int64) (*PromptEntry, error) {
 	row := s.db.QueryRow(`
-		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.updated_at
+		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.params, d.updated_at
 		FROM default_prompts d
 		LEFT JOIN prompt_templates t ON d.template_id = t.id
 		WHERE d.chat_id = ?
@@ -198,7 +201,8 @@ func (s *PromptStore) GetPrompts(chatID int64) (*PromptEntry, error) {
 	var templateName sql.NullString
 	var provider sql.NullString
 	var modelName sql.NullString
-	err := row.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &entry.UpdatedAt)
+	var params sql.NullString
+	err := row.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &params, &entry.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -215,6 +219,9 @@ func (s *PromptStore) GetPrompts(chatID int64) (*PromptEntry, error) {
 	}
 	if modelName.Valid {
 		entry.ModelName = modelName.String
+	}
+	if params.Valid {
+		entry.Params = params.String
 	}
 	return &entry, nil
 }
@@ -284,7 +291,7 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 
 	// Fetch rows.
 	query := `
-		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.updated_at 
+		SELECT d.chat_id, d.template_id, t.name, d.provider, d.model_name, d.params, d.updated_at 
 		FROM default_prompts d
 		LEFT JOIN prompt_templates t ON d.template_id = t.id
 	` + whereClause + " ORDER BY d.updated_at DESC LIMIT ? OFFSET ?"
@@ -303,7 +310,8 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 		var templateName sql.NullString
 		var provider sql.NullString
 		var modelName sql.NullString
-		if err := rows.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &entry.UpdatedAt); err != nil {
+		var params sql.NullString
+		if err := rows.Scan(&entry.ChatID, &templateID, &templateName, &provider, &modelName, &params, &entry.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		if templateID.Valid {
@@ -317,6 +325,9 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 		if modelName.Valid {
 			entry.ModelName = modelName.String
 		}
+		if params.Valid {
+			entry.Params = params.String
+		}
 		entries = append(entries, entry)
 	}
 
@@ -324,16 +335,17 @@ func (s *PromptStore) ListAllPrompts(offset, limit int, search string) ([]Prompt
 }
 
 // UpdatePrompts updates the template assignment and provider for a chat.
-func (s *PromptStore) UpdatePrompts(chatID int64, templateID int64, provider, modelName string) error {
+func (s *PromptStore) UpdatePrompts(chatID int64, templateID int64, provider, modelName, params string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO default_prompts (chat_id, template_id, provider, model_name, updated_at)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO default_prompts (chat_id, template_id, provider, model_name, params, updated_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(chat_id) DO UPDATE SET
 			template_id = excluded.template_id,
 			provider = excluded.provider,
 			model_name = excluded.model_name,
+			params = excluded.params,
 			updated_at = CURRENT_TIMESTAMP
-	`, chatID, templateID, provider, modelName)
+	`, chatID, templateID, provider, modelName, params)
 	return err
 }
 

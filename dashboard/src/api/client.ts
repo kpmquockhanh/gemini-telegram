@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Prompt, PromptListResponse, PromptFormData, Template, TemplateFormData, Stats, ProvidersResponse, GenerationHistoryListResponse } from '@/types'
+import type { Prompt, PromptListResponse, PromptFormData, Template, TemplateFormData, Stats, ProvidersResponse, GenerationHistoryListResponse, GenerateRequest, GenerateResponse } from '@/types'
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -48,3 +48,7 @@ export const listGenerationHistory = (page = 1, limit = 20, status = 'all', sear
 
 export const clearGenerationHistory = (): Promise<{ message: string }> =>
   client.delete('/generations').then((r) => r.data)
+
+// Generate
+export const generate = (data: GenerateRequest): Promise<GenerateResponse> =>
+  client.post('/generate', data).then((r) => r.data)

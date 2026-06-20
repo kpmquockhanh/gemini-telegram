@@ -75,6 +75,10 @@ function handlePageChange(page: number, pageSize: number) {
   promptsStore.fetchPrompts(page, pageSize)
 }
 
+function isOrphanedTemplate(record: Prompt): boolean {
+  return record.templateId !== null && !record.templateName
+}
+
 function openEditModal(record: Prompt) {
   currentChatId.value = record.chatId
   let params: Record<string, unknown> = {}
@@ -85,13 +89,19 @@ function openEditModal(record: Prompt) {
       params = {}
     }
   }
+  // If the assigned template was deleted, clear the selection
+  const existingTemplate = record.templateId
+    ? templatesStore.items.find((t) => t.id === record.templateId)
+    : null
+  const effectiveTemplateId = existingTemplate ? record.templateId : null
+
   editForm.value = {
-    templateId: record.templateId || null,
+    templateId: effectiveTemplateId,
     provider: record.provider || providers.value?.default || '',
     modelName: record.modelName || '',
     params,
   }
-  selectedTemplate.value = record.templateId || null
+  selectedTemplate.value = effectiveTemplateId
   editModalVisible.value = true
 }
 
@@ -182,6 +192,11 @@ function getTemplateName(templateId: number | null): string {
       <a-table-column title="Template" data-index="templateId" key="templateId" width="200">
         <template #default="{ text, record }">
           <span v-if="record.templateName" class="template-name">{{ record.templateName }}</span>
+          <span v-else-if="isOrphanedTemplate(record)" class="orphaned-tag">
+            <a-tooltip title="This template has been deleted">
+              <span class="orphaned-text">Deleted</span>
+            </a-tooltip>
+          </span>
           <span v-else class="empty-text">—</span>
         </template>
       </a-table-column>
@@ -399,6 +414,19 @@ function getTemplateName(templateId: number | null): string {
 .template-name {
   font-weight: 600;
   color: #0F172A;
+}
+
+.orphaned-tag {
+  cursor: help;
+}
+
+.orphaned-text {
+  font-weight: 600;
+  font-size: 12px;
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 
 .empty-text {

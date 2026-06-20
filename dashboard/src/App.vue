@@ -163,8 +163,6 @@ body {
   background: transparent !important;
 }
 .ant-menu-item {
-  border-radius: 10px !important;
-  margin: 4px 8px !important;
   color: #64748b !important;
 }
 .ant-menu-item-selected {

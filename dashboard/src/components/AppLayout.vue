@@ -52,12 +52,7 @@ const pageTitle = computed(() => {
         <span v-if="!appStore.sidebarCollapsed" class="logo-text">Gemini</span>
       </div>
       <div class="menu-divider" />
-      <a-menu
-        :selected-keys="[route.path]"
-        mode="inline"
-        class="custom-menu"
-        theme="light"
-      >
+      <a-menu :selected-keys="[route.path]" mode="inline" class="custom-menu" theme="light">
         <a-menu-item v-for="item in menuItems" :key="item.key">
           <RouterLink :to="item.key" class="menu-link">
             <component :is="item.icon" />
@@ -70,11 +65,7 @@ const pageTitle = computed(() => {
     <a-layout>
       <a-layout-header class="header">
         <div class="header-left">
-          <a-button
-            type="text"
-            class="toggle-btn"
-            @click="appStore.toggleSidebar"
-          >
+          <a-button type="text" class="toggle-btn" @click="appStore.toggleSidebar">
             <MenuUnfoldOutlined v-if="appStore.sidebarCollapsed" />
             <MenuFoldOutlined v-else />
           </a-button>
@@ -96,12 +87,12 @@ const pageTitle = computed(() => {
 <style scoped>
 .app-layout {
   height: 100vh;
-  background: #F8FAFC;
+  background: #f8fafc;
 }
 
 .sidebar {
-  background: #FFFFFF !important;
-  border-right: 1px solid #E2E8F0;
+  background: #ffffff !important;
+  border-right: 1px solid #e2e8f0;
   z-index: 10;
   overflow-y: auto;
   overflow-x: hidden;
@@ -112,7 +103,7 @@ const pageTitle = computed(() => {
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #cbd5e1;
   border-radius: 2px;
 }
 
@@ -133,11 +124,11 @@ const pageTitle = computed(() => {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: #00D9A5;
+  background: #00d9a5;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #0F172A;
+  color: #0f172a;
   font-size: 18px;
   flex-shrink: 0;
 }
@@ -146,14 +137,14 @@ const pageTitle = computed(() => {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 20px;
   font-weight: 700;
-  color: #0F172A;
+  color: #0f172a;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .menu-divider {
   height: 1px;
-  background: #E2E8F0;
+  background: #e2e8f0;
   margin: 0 20px 8px;
 }
 
@@ -164,18 +155,13 @@ const pageTitle = computed(() => {
 }
 
 .custom-menu :deep(.ant-menu-item) {
-  border-radius: 10px !important;
-  margin: 4px 8px !important;
-  padding: 0 12px !important;
-  height: 44px;
-  line-height: 44px;
   transition: all 0.2s ease;
-  color: #64748B !important;
+  color: #64748b !important;
 }
 
 .custom-menu :deep(.ant-menu-item-selected) {
-  background: #F1F5F9 !important;
-  color: #00D9A5 !important;
+  background: #f1f5f9 !important;
+  color: #00d9a5 !important;
   font-weight: 600;
   box-shadow: none;
 }
@@ -185,8 +171,8 @@ const pageTitle = computed(() => {
 }
 
 .custom-menu :deep(.ant-menu-item:hover) {
-  background: #F1F5F9 !important;
-  color: #00D9A5 !important;
+  background: #f1f5f9 !important;
+  color: #00d9a5 !important;
 }
 
 .menu-link {
@@ -205,7 +191,7 @@ const pageTitle = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #E2E8F0;
+  border-bottom: 1px solid #e2e8f0;
   height: 64px;
   position: sticky;
   top: 0;
@@ -225,13 +211,13 @@ const pageTitle = computed(() => {
   align-items: center;
   justify-content: center;
   border-radius: 10px !important;
-  color: #64748B;
+  color: #64748b;
   transition: all 0.2s;
 }
 
 .toggle-btn:hover {
-  background: #F1F5F9 !important;
-  color: #0F172A;
+  background: #f1f5f9 !important;
+  color: #0f172a;
 }
 
 .breadcrumb {
@@ -243,7 +229,7 @@ const pageTitle = computed(() => {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 18px;
   font-weight: 600;
-  color: #0F172A;
+  color: #0f172a;
   letter-spacing: -0.02em;
 }
 
@@ -256,10 +242,10 @@ const pageTitle = computed(() => {
 .content {
   margin: 24px;
   padding: 24px;
-  background: #FFFFFF;
+  background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
-  border: 1px solid #E2E8F0;
+  border: 1px solid #e2e8f0;
 }
 
 /* Responsive */

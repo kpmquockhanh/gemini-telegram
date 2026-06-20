@@ -60,6 +60,7 @@ shell-dashboard:
 
 # Build and run binary
 exec:
+	cd dashboard && npm i && npm run build
 	go build -o bin/gemini-telegram-bot .
 	./bin/gemini-telegram-bot
 
